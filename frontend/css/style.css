@@ -670,6 +670,11 @@ input[type=range]::-webkit-slider-thumb {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 4px;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.5));
 }
 
 .policy-body { display: flex; flex-direction: column; gap: 2px; }
@@ -1594,8 +1599,10 @@ input[type=range]::-webkit-slider-thumb {
 .tech-col-header {
   position: absolute; top: 0;
   font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 1.5px; color: var(--text-dim); text-align: center;
-  padding: 4px 0; border-bottom: 1px solid var(--border);
+  letter-spacing: 1.5px; color: var(--gold-light); text-align: center;
+  padding: 4px 0 4px 36px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  height: 28px; overflow: hidden;
 }
 
 .tech-node {
@@ -1608,10 +1615,16 @@ input[type=range]::-webkit-slider-thumb {
 .tech-node.tech-available:hover { background: rgba(201,168,76,0.22); border-color: var(--gold); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(201,168,76,0.2); }
 .tech-node.tech-locked { background: rgba(255,255,255,0.02); border: 1px solid var(--border); opacity: 0.6; }
 
-.tech-node-icon { font-size: 20px; line-height: 1; }
+.tech-node-icon { font-size: 20px; line-height: 1; display: flex; align-items: center; gap: 4px; }
+.tech-node-img { width: 28px; height: 28px; object-fit: contain; image-rendering: auto; filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)); flex-shrink: 0; }
+.tech-node.tech-researched .tech-node-img { filter: drop-shadow(0 0 4px rgba(34,197,94,0.5)); }
+.tech-node.tech-available .tech-node-img { filter: drop-shadow(0 0 4px rgba(201,168,76,0.4)); }
+.tech-node.tech-locked .tech-node-img { filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7)) grayscale(0.6) brightness(0.7); }
+.tech-node-emoji { font-size: 20px; line-height: 1; }
 .tech-node-name { font-size: 12px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
 .tech-node-cost { font-size: 10px; font-weight: 700; }
 .tech-node-unlock { font-size: 9.5px; color: var(--text-dim); line-height: 1.4; margin-top: 1px; }
+.tech-col-label { position: relative; z-index: 1; background: rgba(13,13,20,0.6); padding: 1px 4px; border-radius: 2px; }
 
 /* === News Panel === */
 .news-item { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.5; }
@@ -1639,3 +1652,345 @@ input[type=range]::-webkit-slider-thumb {
 .tier-1 { background: rgba(59,130,246,0.15); border-color: #3b82f6; color: #60a5fa; }
 .tier-2 { background: rgba(234,179,8,0.15); border-color: #eab308; color: #fbbf24; }
 .tier-3 { background: rgba(34,197,94,0.15); border-color: #22c55e; color: #4ade80; }
+
+/* ============================================================
+   WAR SYSTEM — Military Panel, Army Cards, War Map Overlays
+   ============================================================ */
+
+/* ── Military overview ── */
+.mil-overview {
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.2);
+  border-bottom: 1px solid var(--border);
+}
+.mil-stat-row {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+}
+.mil-stat-label { color: var(--text-dim); font-size: 11px; min-width: 80px; }
+.mil-stat-val   { color: var(--text-primary); font-weight: 600; font-size: 12px; }
+.mil-bar {
+  height: 5px; background: rgba(255,255,255,0.07); border-radius: 3px;
+  margin-bottom: 6px; overflow: hidden;
+}
+.mil-bar-fill {
+  height: 100%; background: linear-gradient(90deg, #c9a84c, #e8c96a);
+  border-radius: 3px; transition: width 0.4s;
+}
+
+/* ── Section headers ── */
+.mil-section-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 10px 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  background: rgba(0,0,0,0.15);
+}
+
+/* ── War fronts list ── */
+.mil-war-status {
+  padding: 6px 10px; font-size: 11px; color: #f97316;
+  background: rgba(239,68,68,0.08); border-bottom: 1px solid rgba(239,68,68,0.2);
+}
+.mil-fronts { padding: 4px 8px; }
+.mil-front-row {
+  display: flex; align-items: center; gap: 5px; padding: 3px 0;
+  font-size: 11px;
+}
+.mil-front-target { min-width: 80px; color: var(--text-secondary); }
+.mil-front-bar {
+  flex: 1; height: 6px; background: rgba(255,255,255,0.08);
+  border-radius: 3px; overflow: hidden;
+}
+.mil-front-fill {
+  height: 100%; background: linear-gradient(90deg, #ef4444, #f97316);
+  border-radius: 3px; transition: width 0.5s;
+}
+.mil-front-pct { font-size: 10px; color: var(--text-dim); min-width: 28px; text-align: right; }
+.mil-front-status { min-width: 14px; text-align: center; font-size: 12px; }
+
+/* ── Army cards ── */
+.army-card {
+  background: rgba(20, 24, 40, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  margin: 5px 8px;
+  padding: 7px 9px;
+  transition: border-color 0.2s;
+}
+.army-card:hover { border-color: var(--border-bright); }
+
+.army-card-header {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+}
+.army-type-badge {
+  width: 32px; height: 32px; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700; color: #fff; flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.25);
+}
+.army-info { flex: 1; min-width: 0; }
+.army-name { font-weight: 700; font-size: 13px; color: var(--text-primary); }
+.army-sub  { font-size: 10px; color: var(--text-dim); }
+.army-status { font-size: 11px; font-weight: 600; white-space: nowrap; }
+
+.army-train-bar {
+  height: 3px; background: rgba(255,255,255,0.07);
+  border-radius: 2px; overflow: hidden; margin-bottom: 5px;
+}
+.army-train-fill {
+  height: 100%; background: #f59e0b;
+  border-radius: 2px; transition: width 0.4s;
+}
+.army-health-row {
+  display: flex; align-items: center; gap: 4px; margin-bottom: 5px;
+}
+.army-health-label { font-size: 9px; color: var(--text-dim); }
+.army-health-bar {
+  flex: 1; height: 4px; background: rgba(255,255,255,0.07);
+  border-radius: 2px; overflow: hidden;
+}
+.army-health-fill {
+  height: 100%; border-radius: 2px; transition: width 0.4s;
+}
+.army-target {
+  font-size: 10px; color: #ef4444; margin-bottom: 4px; padding-left: 2px;
+}
+.army-actions {
+  display: flex; gap: 5px; justify-content: flex-end; margin-top: 2px;
+}
+
+/* Small extra-small buttons */
+.btn-xs {
+  padding: 2px 8px; font-size: 10px; border-radius: 3px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-card); color: var(--text-primary);
+  transition: background 0.15s, border-color 0.15s;
+}
+.btn-xs:hover { background: var(--bg-hover); border-color: var(--border-bright); }
+.btn-primary.btn-xs { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
+.btn-primary.btn-xs:hover { background: #2563eb; }
+.btn-danger.btn-xs  { background: rgba(185,28,28,0.25); border-color: #ef4444; color: #fca5a5; }
+.btn-danger.btn-xs:hover  { background: rgba(185,28,28,0.45); }
+.btn-secondary.btn-xs { background: var(--bg-card); color: var(--text-secondary); }
+
+/* ── Create Army Modal ── */
+.cam-template-list {
+  display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+}
+.cam-template {
+  display: flex; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 5px;
+  cursor: pointer; background: var(--bg-card);
+  transition: border-color 0.15s, background 0.15s;
+}
+.cam-template:hover { border-color: var(--border-bright); background: var(--bg-hover); }
+.cam-template.selected { border-color: var(--gold); background: rgba(201,168,76,0.1); }
+.cam-template-icon {
+  width: 38px; height: 38px; border-radius: 4px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+  border: 1px solid rgba(255,255,255,0.2);
+}
+.cam-template-info { flex: 1; min-width: 0; }
+.cam-template-name  { font-weight: 700; color: var(--text-primary); font-size: 13px; }
+.cam-template-desc  { margin-top: 1px; }
+.cam-template-stats { margin-top: 3px; color: var(--text-secondary); }
+.cam-template-cost  { margin-top: 2px; }
+
+/* ── Assign Army Modal ── */
+.aam-target-list { display: flex; flex-direction: column; gap: 4px; }
+.aam-target {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  background: var(--bg-card); transition: all 0.15s;
+  font-size: 13px;
+}
+.aam-target:hover { border-color: #ef4444; background: rgba(239,68,68,0.1); }
+.aam-target span { flex: 1; }
+
+/* ── Assign Army Modal: front items + sector ── */
+.aam-section-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--text-dim);
+  padding: 6px 2px 3px;
+}
+.aam-front-item {
+  display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  border: 1px solid rgba(59,130,246,0.35); border-radius: 5px; cursor: pointer;
+  background: rgba(59,130,246,0.06); transition: all 0.15s; margin-bottom: 4px;
+}
+.aam-front-item:hover { border-color: #3b82f6; background: rgba(59,130,246,0.15); }
+.aam-front-sector-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.5px;
+  padding: 2px 5px; border-radius: 3px; background: rgba(59,130,246,0.25);
+  color: #93c5fd; flex-shrink: 0;
+}
+.aam-front-name { flex: 1; font-size: 12px; color: var(--text-primary); }
+.aam-front-progress-bar {
+  width: 50px; height: 5px; background: rgba(255,255,255,0.1);
+  border-radius: 3px; overflow: hidden; flex-shrink: 0;
+}
+.aam-front-pct { font-size: 10px; color: var(--text-dim); min-width: 28px; text-align: right; }
+.aam-front-armies { font-size: 10px; color: var(--gold); min-width: 40px; text-align: right; }
+.aam-divider {
+  text-align: center; font-size: 10px; color: var(--text-dim);
+  letter-spacing: 1px; padding: 6px 0; border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); margin: 6px 0;
+}
+.aam-sector-row {
+  display: flex; align-items: center; gap: 8px; padding: 6px 2px 2px;
+  flex-wrap: wrap;
+}
+.aam-sector-sel {
+  background: var(--bg-card); border: 1px solid var(--border);
+  color: var(--text-primary); border-radius: 4px; padding: 3px 6px;
+  font-size: 12px; font-family: 'Rajdhani', sans-serif;
+}
+
+/* ── Army order buttons ── */
+.army-order-row {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+}
+.army-order-label { font-size: 10px; color: var(--text-dim); }
+.army-order-btns { display: flex; gap: 4px; }
+.army-order-btn {
+  font-size: 10px; padding: 2px 8px; border-radius: 3px;
+  border: 1px solid var(--border); background: var(--bg-card);
+  color: var(--text-secondary); cursor: pointer; font-family: 'Rajdhani', sans-serif;
+  transition: all 0.15s;
+}
+.army-order-btn:hover { border-color: var(--border-bright); color: var(--text-primary); }
+.order-active {
+  border-color: #ef4444 !important; background: rgba(239,68,68,0.15) !important;
+  color: #fca5a5 !important;
+}
+.order-active-hold {
+  border-color: #3b82f6 !important; background: rgba(59,130,246,0.15) !important;
+  color: #93c5fd !important;
+}
+
+/* ── Front sector badge in mil panel ── */
+.mil-front-sector {
+  font-size: 9px; font-weight: 700; padding: 1px 4px; border-radius: 3px;
+  background: rgba(239,68,68,0.2); color: #fca5a5; letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+.mil-front-armies {
+  font-size: 10px; color: var(--gold); min-width: 20px; text-align: center;
+}
+.front-captured .mil-front-fill { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.front-captured .mil-front-target { color: #4ade80; }
+
+/* ── Territory count badge ── */
+.territory-count-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+  background: rgba(201,168,76,0.15); border: 1px solid rgba(201,168,76,0.3);
+  color: var(--gold); white-space: nowrap; align-self: center;
+}
+
+/* ── War card improvements ── */
+.war-header-row {
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;
+}
+.war-warscore {
+  font-size: 14px; font-weight: 700;
+}
+.war-meta-row {
+  display: flex; gap: 8px; align-items: center; margin-bottom: 4px; flex-wrap: wrap;
+}
+.war-front-count {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: rgba(239,68,68,0.15); color: #fca5a5; font-weight: 600;
+}
+.war-occupied-count {
+  font-size: 10px; padding: 1px 6px; border-radius: 8px;
+  background: rgba(201,168,76,0.15); color: var(--gold); font-weight: 600;
+}
+
+/* ── Conscription Modal ── */
+.conscription-law-item {
+  padding: 9px 12px; margin-bottom: 6px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: var(--bg-card); cursor: pointer;
+  transition: all 0.15s;
+}
+.conscription-law-item:hover { border-color: var(--gold); background: rgba(201,168,76,0.05); }
+.conscription-law-item.current { border-color: #22c55e; background: rgba(34,197,94,0.08); cursor: default; }
+.cl-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px; }
+.cl-name   { font-weight: 700; color: var(--text-primary); font-size: 13px; }
+.cl-badge  { font-size: 10px; color: #4ade80; font-weight: 700; }
+.cl-cost   { font-size: 10px; color: var(--gold); font-weight: 700; }
+.cl-desc   { margin-bottom: 2px; }
+.cl-rate   { }
+
+/* ── SVG War Map Overlays ── */
+@keyframes war-march {
+  to { stroke-dashoffset: -20; }
+}
+.war-arrow-march {
+  stroke-dasharray: 10 5;
+  animation: war-march 0.7s linear infinite;
+}
+@keyframes attack-pulse {
+  0%, 100% { opacity: 1; r: 3; }
+  50%       { opacity: 0.5; r: 5; }
+}
+.attack-pulse {
+  animation: attack-pulse 1s ease-in-out infinite;
+}
+/* Country highlight when at war */
+.country-path.at-war {
+  stroke: #ef4444 !important;
+  stroke-width: 1.2 !important;
+}
+/* Occupied territory overlay pulsing */
+.occupation-overlay {
+  animation: occ-pulse 2s ease-in-out infinite alternate;
+}
+@keyframes occ-pulse {
+  from { opacity: 0.5; }
+  to   { opacity: 0.8; }
+}
+
+/* ── Sandbox Panel ── */
+.sandbox-section-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.sandbox-grid {
+  display: flex; flex-wrap: wrap; gap: 6px;
+}
+.sandbox-btn {
+  padding: 6px 12px; border-radius: 4px; font-size: 12px; font-weight: 600;
+  cursor: pointer; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-primary);
+  transition: all 0.15s; font-family: 'Rajdhani', sans-serif;
+}
+.sandbox-btn:hover { background: var(--bg-hover); border-color: var(--gold); color: var(--gold); }
+.sandbox-btn-danger { border-color: rgba(239,68,68,0.5); color: #fca5a5; }
+.sandbox-btn-danger:hover { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #ef4444; }
+.sandbox-log {
+  margin-top: 12px; padding: 8px; background: rgba(0,0,0,0.3);
+  border: 1px solid var(--border); border-radius: 4px;
+  max-height: 120px; overflow-y: auto;
+  font-family: monospace; font-size: 11px;
+}
+.sb-log-entry { padding: 2px 0; color: #4ade80; }
+
+/* ── War counter tooltip ── */
+#war-counter-tip {
+  position: fixed;
+  background: rgba(10,18,30,0.97);
+  border: 1px solid #3b5c8c;
+  color: #c9d8ea;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'Rajdhani', sans-serif;
+  pointer-events: none;
+  z-index: 9000;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  display: none;
+}

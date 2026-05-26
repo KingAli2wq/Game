@@ -76,6 +76,27 @@ const API = {
   // Research
   startResearch: (gameId, body) => API.post(`/api/game/${gameId}/research/start`, body),
   cancelResearch: (gameId, body) => API.post(`/api/game/${gameId}/research/cancel`, body),
+
+  // Save / Sandbox
+  saveGame: (gameId) => API.post(`/api/game/${gameId}/save`),
+  sandbox: (gameId, action, extras = {}) =>
+    API.post(`/api/game/${gameId}/sandbox`, { action, ...extras }),
+
+  // Army management (HOI4-style)
+  getArmyTemplates: (gameId) => API.get(`/api/game/${gameId}/military/templates`),
+  getArmies: (gameId) => API.get(`/api/game/${gameId}/military/armies`),
+  createArmy: (gameId, body) => API.post(`/api/game/${gameId}/military/army/create`, body),
+  assignArmy: (gameId, armyId, target_nation_id, sector = 'main', open_new_front = false) =>
+    API.post(`/api/game/${gameId}/military/army/${armyId}/assign`, { target_nation_id, sector, open_new_front }),
+  recallArmy: (gameId, armyId) =>
+    API.post(`/api/game/${gameId}/military/army/${armyId}/recall`),
+  disbandArmy: (gameId, armyId) =>
+    API.del(`/api/game/${gameId}/military/army/${armyId}`),
+  setArmyOrder: (gameId, armyId, order) =>
+    API.post(`/api/game/${gameId}/military/army/${armyId}/order`, { order }),
+  setConscription: (gameId, law_id) =>
+    API.post(`/api/game/${gameId}/military/conscription`, { law_id }),
+  getWarFronts: (gameId) => API.get(`/api/game/${gameId}/military/war-fronts`),
 };
 
 window.API = API;

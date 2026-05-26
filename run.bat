@@ -8,8 +8,19 @@ echo  ║  Hearts of Iron x NationStates   ║
 echo  ╚══════════════════════════════════╝
 echo.
 
+:: Prefer venv Python if available
+set "PYTHON=python"
+set "PIP=pip"
+set "DEPS_MARKER=.deps_installed"
+
+if exist ".venv\Scripts\python.exe" (
+    set "PYTHON=.venv\Scripts\python.exe"
+    set "PIP=.venv\Scripts\pip.exe"
+    set "DEPS_MARKER=.deps_installed_venv"
+)
+
 :: Check Python
-python --version >nul 2>&1
+%PYTHON% --version >nul 2>&1
 if errorlevel 1 (
     echo ERROR: Python not found. Install Python 3.11+ from python.org
     pause
@@ -17,15 +28,15 @@ if errorlevel 1 (
 )
 
 :: Install dependencies if needed
-if not exist ".deps_installed" (
+if not exist "%DEPS_MARKER%" (
     echo Installing dependencies...
-    pip install -r requirements.txt
+    %PIP% install -r requirements.txt
     if errorlevel 1 (
         echo ERROR: pip install failed.
         pause
         exit /b 1
     )
-    echo. > .deps_installed
+    echo. > "%DEPS_MARKER%"
     echo Dependencies installed.
 )
 
@@ -43,6 +54,6 @@ echo.
 start "" cmd /c "timeout /t 2 /nobreak >nul && start http://localhost:8000"
 
 :: Run the server
-python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
+%PYTHON% -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 
 pause

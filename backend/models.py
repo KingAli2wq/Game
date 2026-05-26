@@ -3,6 +3,37 @@ from typing import Optional
 from uuid import uuid4
 
 
+class ArmyDivision(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4())[:8])
+    name: str
+    nation_id: str
+    template_id: str  # infantry, motorized, armor, artillery, special
+    num_divisions: int = 3
+    manpower: int = 30000
+    strength: float = 1.0       # current health 0–1
+    organization: float = 0.0   # 0 in training, rises to 1.0 when trained
+    training_progress: int = 0  # turns completed
+    training_turns_required: int = 3
+    is_trained: bool = False
+    location: str = ""          # nation_id of territory where stationed
+    assigned_target: Optional[str] = None  # nation_id being attacked
+    front_id: Optional[str] = None         # specific WarFront.id this army is assigned to
+    order: str = "advance"                 # advance | hold
+    status: str = "training"    # training | ready | attacking | defending
+    created_turn: int = 0
+
+
+class WarFront(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid4())[:8])
+    war_id: str
+    attacker_nation: str
+    defender_nation: str
+    target_territory: str       # nation_id of territory being attacked
+    sector: str = "main"        # main | north | south | east | west | flank
+    progress: float = 0.0       # 0.0 = no advance, 1.0 = captured
+    status: str = "active"      # active | captured | abandoned
+
+
 class EconomyStats(BaseModel):
     gdp: float = 100.0
     gdp_growth: float = 0.03
@@ -83,6 +114,8 @@ class Nation(BaseModel):
     political_power: float = 30.0
     # Citizen happiness — affected by economy, stability, and issue choices
     happiness: float = 0.65
+    # Conscription law affects monthly manpower replenishment
+    conscription_law: str = "limited_conscription"
     # Technology levels per branch (1–10) + set of researched HoI4-style node IDs
     tech_levels: dict = Field(default_factory=lambda: {
         "industry": 1, "military": 1, "diplomacy": 1, "researched_nodes": []
@@ -131,6 +164,10 @@ class War(BaseModel):
     status: str = "ongoing"
     # Troops contributed by allied nations (nation_id -> count)
     contributed_troops: dict[str, int] = Field(default_factory=dict)
+    # HOI4-style fronts and territorial control
+    fronts: list[WarFront] = Field(default_factory=list)
+    # territory_id -> occupying nation_id
+    occupied_territories: dict[str, str] = Field(default_factory=dict)
 
 
 class IssueOption(BaseModel):
@@ -178,6 +215,8 @@ class GameState(BaseModel):
     phase: str = "issues"
     # Active resource trades between nations
     resource_trades: list[ResourceTradeOffer] = Field(default_factory=list)
+    # HOI4-style player army groups
+    player_armies: list[ArmyDivision] = Field(default_factory=list)
 
     def get_player_nation(self) -> Optional[Nation]:
         return self.nations.get(self.player_nation_id)
@@ -245,3 +284,19 @@ class AllianceUpgradeRequest(BaseModel):
     target_nation: str
     # Target tier: 1=non-aggression, 2=defense pact, 3=full alliance
     target_tier: int
+
+
+class CreateArmyRequest(BaseModel):
+    template_id: str = "infantry"
+    name: str = ""
+    num_divisions: int = 3
+
+
+class AssignArmyRequest(BaseModel):
+    target_nation_id: str
+    sector: str = "main"            # main | north | south | east | west | flank
+    open_new_front: bool = False     # force-create a new front even if one for this sector exists
+
+
+class ConscriptionRequest(BaseModel):
+    law_id: str

@@ -121,6 +121,7 @@ const MapModule = (() => {
         // Container may have been hidden (0×0) at init time — resize now that data is ready
         resize();
         if (currentGameState) updateColors(currentGameState);
+        _fireReady();
       })
       .catch(err => {
         console.error('Local map failed, falling back to CDN:', err);
@@ -143,6 +144,7 @@ const MapModule = (() => {
             buildCountryNameMap(countries.features);
             resize();
             if (currentGameState) updateColors(currentGameState);
+            _fireReady();
           });
       });
   }
@@ -278,18 +280,43 @@ const MapModule = (() => {
       if (num) isoToNation[num] = { id: nid, nation };
     }
 
+    // Build reverse map: territory_id -> controlling nation
+    const territoryController = {};
+    for (const [nid, nation] of Object.entries(gameState.nations)) {
+      if (nation.is_alive) {
+        for (const tid of (nation.controlled_territories || [])) {
+          territoryController[tid] = { id: nid, nation };
+        }
+      }
+    }
+
     d3.selectAll('.country-path').each(function(d) {
       const el    = d3.select(this);
       const match = isoToNation[d.id];
       if (match) {
         const nation = match.nation;
-        const color  = !nation.is_alive ? '#0c0c18'
-          : (IDEOLOGY_MAP_COLORS[nation.ideology] || '#1e2d45');
-        el.attr('fill', color)
-          .classed('player',  nation.is_player)
-          .classed('at-war',  nation.is_at_war);
+        if (!nation.is_alive) {
+          // Check if this territory is controlled by another nation
+          const controller = territoryController[match.id];
+          if (controller) {
+            const ctrlColor = IDEOLOGY_MAP_COLORS[controller.nation.ideology] || '#1e2d45';
+            // Darken the color slightly to distinguish from sovereign territory
+            el.attr('fill', ctrlColor)
+              .attr('opacity', 0.65)
+              .classed('player', false)
+              .classed('at-war', false);
+          } else {
+            el.attr('fill', '#0c0c18').attr('opacity', 1)
+              .classed('player', false).classed('at-war', false);
+          }
+        } else {
+          const color = IDEOLOGY_MAP_COLORS[nation.ideology] || '#1e2d45';
+          el.attr('fill', color).attr('opacity', 1)
+            .classed('player',  nation.is_player)
+            .classed('at-war',  nation.is_at_war);
+        }
       } else {
-        el.attr('fill', '#1c2a40');
+        el.attr('fill', '#1c2a40').attr('opacity', 1);
       }
     });
 
@@ -331,9 +358,29 @@ const MapModule = (() => {
     projection.translate([W / 2, H / 2]).scale(W / 6.3);
     path = d3.geoPath().projection(projection);
     g.selectAll('path').attr('d', path);
+    // Notify WarMapModule that projection changed
+    if (window.WarMapModule) window.WarMapModule.onResize(path, projection);
   }
 
-  return { init, updateColors, highlightNation, resize, flagUrl, getAlpha2 };
+  // Expose internals for WarMapModule overlay integration
+  function getInternals() {
+    return { svg, g, projection, path };
+  }
+
+  // Hooks to call after map data is fully loaded
+  const _readyCallbacks = [];
+  let _dataReady = false;
+  function onReady(cb) {
+    if (_dataReady) { cb(); return; }
+    _readyCallbacks.push(cb);
+  }
+  function _fireReady() {
+    _dataReady = true;
+    _readyCallbacks.forEach(cb => { try { cb(); } catch(e) {} });
+    _readyCallbacks.length = 0;
+  }
+
+  return { init, updateColors, highlightNation, resize, flagUrl, getAlpha2, getInternals, onReady };
 })();
 
 window.MapModule = MapModule;

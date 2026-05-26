@@ -1,8 +1,9 @@
 import asyncio
 import random
 import math
-from backend.models import GameState, Nation, War, Issue, IssueOption
+from backend.models import GameState, Nation, War, Issue, IssueOption, WarFront
 from backend import ai_engine
+from backend.army_templates import get_template, get_conscription_law
 
 
 MAX_PENDING_ISSUES = 4
@@ -767,6 +768,197 @@ def _apply_policy_reactions(state: GameState) -> tuple[GameState, list[str]]:
     return state, logs
 
 
+def _replenish_manpower(state: GameState) -> GameState:
+    """Replenish manpower each turn based on population and conscription law."""
+    player = state.get_player_nation()
+    if not player:
+        return state
+    law = get_conscription_law(player.conscription_law) or get_conscription_law("limited_conscription")
+    rate = law["manpower_rate"]
+    monthly_gain = int(player.population * rate / 12)
+    cap = int(player.population * rate)
+    player.military.manpower_pool = min(cap, player.military.manpower_pool + monthly_gain)
+    state.nations[state.player_nation_id] = player
+    return state
+
+
+def _train_player_armies(state: GameState) -> tuple[GameState, list[str]]:
+    """Advance training progress for all player army groups."""
+    logs = []
+    for army in state.player_armies:
+        if army.is_trained or army.status != "training":
+            continue
+        army.training_progress += 1
+        army.organization = army.training_progress / max(1, army.training_turns_required)
+        if army.training_progress >= army.training_turns_required:
+            army.is_trained = True
+            army.status = "ready"
+            army.organization = 1.0
+            logs.append(f"✓ {army.name} has completed training and is ready for deployment!")
+    return state, logs
+
+
+def _apply_war_end_territory_transfer(state: GameState, war: War) -> GameState:
+    """Transfer occupied and defeated territories when a war ends."""
+    if war.status == "attacker_won":
+        winner_id, loser_id = war.attacker, war.defender
+    elif war.status == "defender_won":
+        winner_id, loser_id = war.defender, war.attacker
+    else:
+        return state
+
+    winner = state.nations.get(winner_id)
+    loser = state.nations.get(loser_id)
+    if not winner or not loser:
+        return state
+
+    # Transfer all occupied territories to winner
+    for territory_id in list(war.occupied_territories.keys()):
+        for n in state.nations.values():
+            if territory_id in n.controlled_territories:
+                n.controlled_territories.remove(territory_id)
+        if territory_id not in winner.controlled_territories:
+            winner.controlled_territories.append(territory_id)
+
+    # Full victory: absorb the defeated nation's territory
+    is_full_victory = (
+        (war.status == "attacker_won" and war.attacker_warscore >= 80) or
+        (war.status == "defender_won" and war.attacker_warscore <= -80)
+    )
+    if is_full_victory:
+        for tid in list(loser.controlled_territories):
+            if tid not in winner.controlled_territories:
+                winner.controlled_territories.append(tid)
+        if loser_id not in winner.controlled_territories:
+            winner.controlled_territories.append(loser_id)
+        loser.controlled_territories.clear()
+        loser.is_alive = False
+        winner.economy.gdp += loser.economy.gdp * 0.3
+        winner.prestige = min(200, winner.prestige + 20)
+        state.add_news(
+            f"{winner.name} conquers {loser.name}",
+            winner_id, "war"
+        )
+
+    state.nations[winner_id] = winner
+    state.nations[loser_id] = loser
+    return state
+
+
+def _resolve_player_fronts(state: GameState) -> tuple[GameState, list[str]]:
+    """Resolve combat on all active player-driven fronts (HOI4-style)."""
+    logs = []
+    for war in state.active_wars:
+        if war.status != "ongoing":
+            continue
+        for front in war.fronts:
+            if front.status != "active":
+                continue
+
+            # Match armies to this front: prefer front_id binding, fall back to assigned_target
+            att_armies = [
+                a for a in state.player_armies
+                if a.is_trained and a.status == "attacking" and (
+                    a.front_id == front.id
+                    or (not a.front_id and a.assigned_target == front.target_territory)
+                )
+            ]
+
+            if not att_armies:
+                # No armies on front — defender slowly pushes back
+                front.progress = max(0.0, front.progress - 0.02)
+                continue
+
+            # Attacker combat power — "hold" order cuts offensive power by 50%
+            att_power = 0.0
+            for army in att_armies:
+                tmpl = get_template(army.template_id)
+                if tmpl:
+                    order_mod = 0.5 if getattr(army, "order", "advance") == "hold" else 1.0
+                    att_power += (
+                        army.num_divisions
+                        * tmpl["attack"]
+                        * army.strength
+                        * army.organization
+                        * order_mod
+                    )
+
+            # Defender power from nation military stats
+            defender = state.nations.get(front.defender_nation)
+            if defender:
+                def_power = (
+                    (defender.military.army_size / 8000)
+                    * defender.military.morale
+                    * 18
+                    * (0.4 + defender.stability * 0.6)
+                )
+            else:
+                def_power = 50.0
+
+            ratio = att_power / max(def_power, 1.0)
+            progress_delta = (ratio - 0.8) * 0.15 + random.gauss(0, 0.04)
+            progress_delta = max(-0.10, min(0.30, progress_delta))
+            front.progress = max(0.0, min(1.0, front.progress + progress_delta))
+
+            # Casualties — "hold" reduces friendly losses by 50%
+            combat_intensity = min(1.0, (att_power + def_power) / 2000.0)
+            for army in att_armies:
+                hold_cas_mod = 0.5 if getattr(army, "order", "advance") == "hold" else 1.0
+                cas_rate = 0.008 * (def_power / max(att_power, 1)) * combat_intensity * hold_cas_mod
+                army.strength = max(0.15, army.strength - cas_rate)
+                army.organization = max(0.1, army.organization - 0.015 * hold_cas_mod)
+                army.manpower = max(0, int(army.manpower * (1 - cas_rate * 0.3)))
+
+            if defender:
+                def_cas = 0.01 * (att_power / max(def_power, 1)) * combat_intensity
+                defender.military.army_size = max(
+                    0, int(defender.military.army_size * (1 - def_cas))
+                )
+                defender.military.morale = max(0.1, defender.military.morale - def_cas * 0.5)
+                state.nations[front.defender_nation] = defender
+
+            sector_label = f" [{front.sector.upper()}]" if front.sector != "main" else ""
+            if progress_delta > 0.06:
+                att_nation = state.nations.get(front.attacker_nation)
+                def_nation = state.nations.get(front.defender_nation)
+                logs.append(
+                    f"⚔ {att_nation.name if att_nation else 'Attacker'} advances on "
+                    f"{def_nation.name if def_nation else 'Defender'}{sector_label} "
+                    f"({front.progress * 100:.0f}% progress)"
+                )
+            elif progress_delta < -0.04:
+                def_nation = state.nations.get(front.defender_nation)
+                logs.append(
+                    f"🛡 {def_nation.name if def_nation else 'Defender'} repels the attack{sector_label} "
+                    f"({front.progress * 100:.0f}% remaining)"
+                )
+
+            # Territory captured
+            if front.progress >= 1.0:
+                front.status = "captured"
+                war.occupied_territories[front.target_territory] = front.attacker_nation
+                war.attacker_warscore = min(100, war.attacker_warscore + 20)
+
+                att_nation = state.nations.get(front.attacker_nation)
+                def_nation = state.nations.get(front.defender_nation)
+                att_name = att_nation.name if att_nation else "Attacker"
+                def_name = def_nation.name if def_nation else "Defender"
+
+                logs.append(f"🚩 {att_name} captures {def_name}{sector_label}! (+20 warscore)")
+                state.add_news(
+                    f"{att_name} Captures {def_name} Territory",
+                    front.attacker_nation,
+                    "war",
+                )
+                # Return armies to ready — they can be reassigned to a new front
+                for army in att_armies:
+                    army.assigned_target = None
+                    army.front_id = None
+                    army.status = "ready"
+
+    return state, logs
+
+
 async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameState, list[str]]:
     """Execute one complete game turn."""
     logs = []
@@ -793,6 +985,21 @@ async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameSt
     # 1b. Process active resource trades
     state = _process_resource_trades(state)
 
+    # 1c. Manpower replenishment and army training
+    state = _replenish_manpower(state)
+    state, train_logs = _train_player_armies(state)
+    for tl in train_logs:
+        logs.append(tl)
+        if broadcast_fn:
+            await broadcast_fn({"type": "turn_action", "message": tl, "action_type": "military"})
+
+    # 1d. Resolve player-driven fronts (HOI4 combat)
+    state, front_logs = _resolve_player_fronts(state)
+    for fl in front_logs:
+        logs.append(fl)
+        if broadcast_fn:
+            await broadcast_fn({"type": "turn_action", "message": fl, "action_type": "war"})
+
     # 2. Resolve ongoing wars
     still_active = []
     for war in state.active_wars:
@@ -813,6 +1020,14 @@ async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameSt
                 if defen:
                     defen.is_at_war = False
                     state.nations[war.defender] = defen
+                # Transfer captured territories to winner
+                state = _apply_war_end_territory_transfer(state, war)
+                # Recall all player armies from this war
+                for army in state.player_armies:
+                    if army.status == "attacking":
+                        army.status = "ready"
+                        army.assigned_target = None
+                        army.front_id = None
         else:
             still_active.append(war)
     state.active_wars = still_active

@@ -8,17 +8,42 @@ let pendingWarNationId = null;
 let aiOnline = false;
 
 // Flag helpers — backed by the comprehensive COUNTRY_DATA from country-data.js
+const FLAG_IDEOLOGY_COLORS = {
+  'Liberal Democracy': '#3b82f6', 'Social Democracy': '#22c55e',
+  'Conservative Democracy': '#f59e0b', 'Socialism': '#ef4444',
+  'Communism': '#dc2626', 'Fascism': '#1c1917', 'Monarchy': '#7c3aed',
+  'Theocracy': '#059669', 'Technocracy': '#0ea5e9', 'Oligarchy': '#78716c',
+};
+
 function getFlagISO2(name) {
   return (COUNTRY_DATA.nameToAlpha2 || {})[name?.toLowerCase()] || null;
 }
 
-function getFlagImg(name, cls = 'flag-img') {
+function getFlagImg(name, cls = 'flag-img', ideology = null) {
   const iso2 = getFlagISO2(name);
+  const size = cls === 'flag-img-lg' ? 24 : 18;
   if (iso2) {
-    return `<img class="${cls}" src="https://flagcdn.com/w40/${iso2}.png" alt="${name}" onerror="this.style.display='none'">`;
+    return `<img class="${cls}" src="https://flagcdn.com/w40/${iso2}.png" alt=""
+      data-nation="${encodeURIComponent(name || '')}" data-ideology="${encodeURIComponent(ideology || '')}" data-size="${size}"
+      onerror="_handleFlagError(this)"
+      style="width:${size}px;height:${Math.round(size*0.67)}px;object-fit:cover;border-radius:2px;vertical-align:middle;flex-shrink:0">`;
   }
-  return `<span style="font-size:${cls === 'flag-img-lg' ? '22px' : '18px'}">🏳️</span>`;
+  return getFlagFallbackHtml(name, ideology, size);
 }
+
+function getFlagFallbackHtml(name, ideology, size = 18) {
+  const color = ideology ? (FLAG_IDEOLOGY_COLORS[ideology] || '#555') : '#555';
+  const initials = (name || '??').split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
+  return `<span style="display:inline-flex;align-items:center;justify-content:center;width:${size}px;height:${Math.round(size*0.67)}px;background:${color};color:#fff;font-size:${Math.round(size*0.45)}px;font-weight:700;border-radius:2px;vertical-align:middle;flex-shrink:0">${initials}</span>`;
+}
+
+function _handleFlagError(img) {
+  const name = decodeURIComponent(img.dataset.nation || '');
+  const ideology = decodeURIComponent(img.dataset.ideology || '');
+  const size = parseInt(img.dataset.size || '18');
+  img.outerHTML = getFlagFallbackHtml(name, ideology, size);
+}
+window._handleFlagError = _handleFlagError;
 
 // ── Init ──────────────────────────────────────────────────────────────
 
@@ -63,6 +88,14 @@ async function initApp() {
 
   MapModule.init('map-container', onMapCountryClick);
   window.addEventListener('resize', () => MapModule.resize());
+
+  // Init WarMapModule once map data is ready
+  MapModule.onReady(() => {
+    const { svg, g, projection, path } = MapModule.getInternals();
+    if (window.WarMapModule && svg && g) {
+      WarMapModule.init(svg, g, projection, path);
+    }
+  });
 }
 
 async function checkAIStatus() {
@@ -437,6 +470,13 @@ function renderAll() {
   if (selectedNationId) renderNationDetail(selectedNationId);
 }
 
+function renderLeftPanel() {
+  renderNationPanel();
+  renderIssuesPanel();
+  renderPoliciesPanel();
+  renderMilitaryPanel();  // async — fires independently
+}
+
 function renderTopBar() {
   const player = gameState.nations[gameState.player_nation_id];
   if (!player) return;
@@ -456,13 +496,6 @@ function renderTopBar() {
   setText('tension-val', (gameState.world_tension * 100).toFixed(0) + '%');
 }
 
-function renderLeftPanel() {
-  renderNationPanel();
-  renderIssuesPanel();
-  renderPoliciesPanel();
-  renderMilitaryPanel();
-}
-
 function renderNationPanel() {
   const player = gameState.nations[gameState.player_nation_id];
   if (!player) return;
@@ -473,12 +506,16 @@ function renderNationPanel() {
   el.innerHTML = `
     <div class="nation-card">
       <div class="nation-leader-row">
-        <div class="leader-avatar">${getFlagImg(player.name, 'flag-img-lg')}</div>
+        <div class="leader-avatar">${getFlagImg(player.name, 'flag-img-lg', player.ideology)}</div>
         <div class="nation-name-block">
           <div class="nation-name-big">${player.name}</div>
           <div class="nation-ideology" style="color:${UI.ideologyColor(player.ideology)}">${player.ideology}</div>
           <div class="nation-leader-name">${player.government_type} · ${player.leader || 'Unknown Leader'}</div>
         </div>
+        ${(player.controlled_territories || []).length > 0 ? `
+          <div class="territory-count-badge" title="Controlled territories">
+            🗺 ${player.controlled_territories.length}
+          </div>` : ''}
       </div>
       ${UI.statBar('Stability', player.stability, 1, 'fill-green', UI.fmtPct(player.stability))}
       ${UI.statBar('War Support', player.war_support, 1, 'fill-blue', UI.fmtPct(player.war_support))}
@@ -570,7 +607,8 @@ function renderNationExtras(player) {
 
 function renderActiveWars() {
   const playerWars = gameState.active_wars.filter(w =>
-    w.attacker === gameState.player_nation_id || w.defender === gameState.player_nation_id
+    (w.attacker === gameState.player_nation_id || w.defender === gameState.player_nation_id)
+    && w.status === 'ongoing'
   );
   if (!playerWars.length) return '';
 
@@ -579,21 +617,34 @@ function renderActiveWars() {
     const enemyId = isAttacker ? war.defender : war.attacker;
     const enemy = gameState.nations[enemyId];
     const warscore = isAttacker ? war.attacker_warscore : -war.attacker_warscore;
-    const wsWidth = Math.abs(warscore / 2) + '%';
+    const wsWidth = Math.min(50, Math.abs(warscore / 2)) + '%';
     const wsClass = warscore >= 0 ? 'attacker' : 'defender';
+    const wsColor = warscore >= 0 ? '#22c55e' : '#ef4444';
+    const wsSign = warscore >= 0 ? '+' : '';
+    const occupiedCount = Object.keys(war.occupied_territories || {}).length;
+
+    // Count active fronts for this war
+    const activeFronts = (war.fronts || []).filter(f => f.status === 'active').length;
 
     return `
       <div class="war-card mt-2">
-        <div class="war-title">⚔ War vs ${enemy?.name || enemyId}</div>
-        <div class="small text-dim">Casus belli: ${war.casus_belli.replace(/_/g, ' ')}</div>
+        <div class="war-header-row">
+          <span class="war-title">⚔ ${enemy?.name || enemyId}</span>
+          <span class="war-warscore" style="color:${wsColor}">${wsSign}${warscore.toFixed(0)}</span>
+        </div>
+        <div class="war-meta-row">
+          <span class="small text-dim">${war.casus_belli.replace(/_/g, ' ')}</span>
+          ${activeFronts > 0 ? `<span class="war-front-count">${activeFronts} front${activeFronts > 1 ? 's' : ''}</span>` : ''}
+          ${occupiedCount > 0 ? `<span class="war-occupied-count">🚩${occupiedCount} captured</span>` : ''}
+        </div>
         <div class="warscore-track mt-1">
           <div class="warscore-fill ${wsClass}" style="width:${wsWidth}"></div>
           <div class="warscore-center"></div>
         </div>
-        <div class="flex" style="justify-content:space-between; font-size:10px; color:var(--text-dim)">
+        <div class="flex" style="justify-content:space-between; font-size:10px; color:var(--text-dim); margin-top:2px">
           <span>Your side</span>
-          <span>${warscore.toFixed(0)}</span>
-          <span>${enemy?.name}</span>
+          <span>0</span>
+          <span>${enemy?.name || '?'}</span>
         </div>
         <div class="flex gap-2 mt-1">
           <button class="btn btn-secondary btn-sm" onclick="showPeaceModal('${war.id}')">Negotiate Peace</button>
@@ -629,8 +680,19 @@ function renderIssueCard(issue) {
 
   const urgencyColors = { critical: '#ef4444', high: '#f59e0b', normal: '#3b82f6', low: '#6b7280' };
   const typeIcons = { economic: '📊', political: '🏛️', social: '👥', military: '⚔️', diplomatic: '🌐' };
+  const typeImgs = {
+    economic:   '../assets/icon-pieces/Cash.png',
+    political:  '../assets/icon-pieces/Treaty.png',
+    social:     '../assets/icon-pieces/Scales Golden.png',
+    military:   '../assets/icon-pieces/Soldiers Facing.png',
+    diplomatic: '../assets/icon-pieces/Global Trade.png',
+  };
   const urgencyColor = urgencyColors[issue.urgency] || '#3b82f6';
-  const typeIcon = typeIcons[issue.issue_type] || '📋';
+  const typeEmoji = typeIcons[issue.issue_type] || '📋';
+  const typeImg = typeImgs[issue.issue_type];
+  const typeIcon = typeImg
+    ? `<img src="${typeImg}" style="width:14px;height:14px;object-fit:contain;vertical-align:middle;margin-right:2px" onerror="this.style.display='none'"> ${issue.issue_type}`
+    : `${typeEmoji} ${issue.issue_type}`;
 
   const optionsHtml = issue.options.map(opt => {
     const advisor = advisorMap[opt.id];
@@ -659,7 +721,7 @@ function renderIssueCard(issue) {
   return `
     <div class="issue-card-ns" id="issue-${issue.id}">
       <div class="issue-card-header">
-        <div class="issue-type-badge">${typeIcon} ${issue.issue_type}</div>
+        <div class="issue-type-badge">${typeIcon}</div>
         <div class="issue-urgency-badge" style="background:${urgencyColor}20;color:${urgencyColor};border:1px solid ${urgencyColor}40">
           ${issue.urgency.toUpperCase()}
         </div>
@@ -724,7 +786,7 @@ function renderDiplomacyPanel() {
       <div class="nation-list-item" onclick="selectNation('${nid}')">
         ${ideoDot}
         <div style="flex:1; min-width:0">
-          <div class="nation-list-name bold">${getFlagImg(nation.name)} ${nation.name}
+          <div class="nation-list-name bold">${getFlagImg(nation.name, 'flag-img', nation.ideology)} ${nation.name}
             ${isAlly ? '<span class="small text-gold"> ★</span>' : ''}
             ${isAtWar ? '<span class="small text-red"> ⚔</span>' : ''}
           </div>
@@ -816,6 +878,14 @@ async function renderPoliciesPanel() {
   }
 }
 
+const POLICY_CAT_BG = {
+  military:    '../assets/idea-bg/Army.png',
+  economic:    '../assets/idea-bg/Diamond.png',
+  social:      '../assets/idea-bg/Pentagon.png',
+  diplomatic:  '../assets/idea-bg/Intrigue.png',
+  ideological: '../assets/idea-bg/Shield.png',
+};
+
 function renderPolicyCard(policy) {
   const disabled = !policy.available || policy.has_conflict || policy.can_afford === false;
   const classes = [
@@ -829,10 +899,12 @@ function renderPolicyCard(policy) {
   const btnLabel = policy.active ? 'Deactivate' : 'Activate';
   const costLabel = policy.cost ? `<span class="policy-badge">Cost: ${policy.cost} PP</span>` : '';
   const affordLabel = policy.can_afford === false ? '<span class="policy-reason">Not enough political power</span>' : '';
+  const catBg = POLICY_CAT_BG[policy.category] || '';
+  const bgStyle = catBg ? `style="background-image:url('${catBg}');background-size:contain;background-repeat:no-repeat;background-position:center"` : '';
 
   return `
     <div class="${classes}">
-      <div class="policy-icon">${policy.icon || '⚙️'}</div>
+      <div class="policy-icon" ${bgStyle}>${policy.icon || '⚙️'}</div>
       <div class="policy-body">
         <div class="policy-header">
           <div class="policy-title">${policy.name}</div>
@@ -868,37 +940,454 @@ async function togglePolicy(policyId) {
 }
 window.togglePolicy = togglePolicy;
 
-function renderMilitaryPanel() {
+// ── Military Panel (HOI4-style) ───────────────────────────────────────
+
+let _armyData = null;  // cached army data from backend
+
+async function renderMilitaryPanel() {
   const player = gameState.nations[gameState.player_nation_id];
   if (!player) return;
   const el = document.getElementById('military-content');
   if (!el) return;
+
   const mil = player.military;
+  const conscLaw = player.conscription_law || 'limited_conscription';
+  const conscLabels = {
+    volunteer_only: 'Volunteer Only',
+    limited_conscription: 'Limited Conscription',
+    extensive_conscription: 'Extensive Conscription',
+    service_and_supply: 'Service & Supply',
+    all_adults_serve: 'All Adults Serve',
+  };
+
+  // Fetch army data
+  let armies = [], fronts = [], manpowerPool = mil.manpower_pool, manpowerCap = Math.round(player.population * 0.15);
+  try {
+    const data = await API.getArmies(gameId);
+    _armyData = data;
+    armies = data.armies || [];
+    fronts = data.fronts || [];
+    manpowerPool = data.manpower_pool ?? mil.manpower_pool;
+    manpowerCap = data.manpower_cap ?? manpowerCap;
+  } catch(e) { /* silent */ }
+
+  const mpPct = Math.round((manpowerPool / Math.max(1, manpowerCap)) * 100);
+
   el.innerHTML = `
-    <div class="eco-grid">
-      <div class="eco-tile">
-        <div class="eco-tile-label">Army</div>
-        <div class="eco-tile-value">${UI.fmtArmy(mil.army_size)}</div>
-        <div class="eco-tile-sub">Manpower ${UI.fmtArmy(mil.manpower_pool)}</div>
+    <!-- Overview stats -->
+    <div class="mil-overview">
+      <div class="mil-stat-row">
+        <span class="mil-stat-label">Manpower</span>
+        <span class="mil-stat-val">${UI.fmtArmy(manpowerPool)} / ${UI.fmtArmy(manpowerCap)}</span>
       </div>
-      <div class="eco-tile">
-        <div class="eco-tile-label">Equipment</div>
-        <div class="eco-tile-value">${UI.fmtPct(mil.equipment_level)}</div>
-        <div class="eco-tile-sub">Morale ${UI.fmtPct(mil.morale)}</div>
+      <div class="mil-bar"><div class="mil-bar-fill" style="width:${mpPct}%"></div></div>
+      <div class="mil-stat-row" style="margin-top:4px">
+        <span class="mil-stat-label">Conscription</span>
+        <span class="mil-stat-val text-gold">${conscLabels[conscLaw] || conscLaw}</span>
+        <button class="btn btn-secondary btn-xs" onclick="openConscriptionModal()">Change</button>
       </div>
-      <div class="eco-tile">
-        <div class="eco-tile-label">Navy</div>
-        <div class="eco-tile-value">${UI.fmtArmy(mil.navy_tonnage)}t</div>
-        <div class="eco-tile-sub">Air ${mil.air_force}</div>
+      <div class="mil-stat-row">
+        <span class="mil-stat-label">Equipment</span>
+        <span class="mil-stat-val">${UI.fmtPct(mil.equipment_level)}</span>
+        <span class="mil-stat-label">Morale</span>
+        <span class="mil-stat-val">${UI.fmtPct(mil.morale)}</span>
       </div>
-      <div class="eco-tile">
-        <div class="eco-tile-label">War Status</div>
-        <div class="eco-tile-value">${player.is_at_war ? 'At War' : 'Peace'}</div>
-        <div class="eco-tile-sub">Support ${UI.fmtPct(player.war_support)}</div>
+    </div>
+
+    <!-- War situation summary -->
+    ${gameState.active_wars.length ? _renderWarSummary(fronts) : ''}
+
+    <!-- Army groups -->
+    <div class="mil-section-header">
+      <span>ARMY GROUPS (${armies.length}/10)</span>
+      <button class="btn btn-primary btn-xs" onclick="openCreateArmyModal()">+ Recruit</button>
+    </div>
+
+    <div id="army-list">
+      ${armies.length === 0
+        ? '<p class="text-dim small italic p-2">No armies. Click Recruit to create one.</p>'
+        : armies.map(a => _renderArmyCard(a)).join('')
+      }
+    </div>
+  `;
+
+  // Refresh war map overlays
+  refreshWarMap(armies, fronts);
+}
+
+function _renderWarSummary(fronts) {
+  if (!fronts || fronts.length === 0) {
+    return `<div class="mil-war-status">⚔ At War — No active fronts. Assign armies to attack!</div>`;
+  }
+  const activeFronts = fronts.filter(f => f.status !== 'abandoned');
+  if (activeFronts.length === 0) {
+    return `<div class="mil-war-status">⚔ At War — All fronts resolved. Assign more armies!</div>`;
+  }
+  return `
+    <div class="mil-section-header">WAR FRONTS <span class="text-dim small">(${activeFronts.length} active)</span></div>
+    <div class="mil-fronts">
+      ${activeFronts.map(f => {
+        const sectorBadge = f.sector && f.sector !== 'main'
+          ? `<span class="mil-front-sector">${f.sector.toUpperCase()}</span>` : '';
+        const statusIcon = f.status === 'captured' ? '✓' : '⚔';
+        const statusClass = f.status === 'captured' ? 'text-green' : 'text-gold';
+        const armyBadge = f.army_count > 0
+          ? `<span class="mil-front-armies">${f.army_count}★</span>` : '';
+        return `
+          <div class="mil-front-row ${f.status === 'captured' ? 'front-captured' : ''}">
+            <span class="mil-front-target">→ ${f.defender_name || f.target_territory}</span>
+            ${sectorBadge}
+            ${armyBadge}
+            <div class="mil-front-bar">
+              <div class="mil-front-fill" style="width:${Math.round(f.progress*100)}%"></div>
+            </div>
+            <span class="mil-front-pct">${Math.round(f.progress*100)}%</span>
+            <span class="mil-front-status ${statusClass}">${statusIcon}</span>
+          </div>`;
+      }).join('')}
+    </div>
+  `;
+}
+
+function _renderArmyCard(army) {
+  const tmpl = army.template || {};
+  const statusColors = { training: '#f59e0b', ready: '#22c55e', attacking: '#ef4444', defending: '#3b82f6' };
+  const statusColor = statusColors[army.status] || '#888';
+  const statusLabel = {
+    training: `Training (${army.training_progress}/${army.training_turns_required})`,
+    ready: 'Ready for Orders',
+    attacking: 'Attacking',
+    defending: 'Defending',
+  }[army.status] || army.status;
+
+  const bgColor = tmpl.color || '#2a3b50';
+
+  const assignedName = army.assigned_target
+    ? (gameState.nations[army.assigned_target]?.name || army.assigned_target)
+    : '';
+
+  // Find the front this army is on for sector label
+  const armyFront = _armyData?.fronts?.find(f => f.id === army.front_id);
+  const sectorLabel = armyFront && armyFront.sector !== 'main'
+    ? ` [${armyFront.sector.toUpperCase()}]` : '';
+
+  // Order toggle — only show when attacking
+  const orderHtml = army.status === 'attacking' ? `
+    <div class="army-order-row">
+      <span class="army-order-label">Order:</span>
+      <div class="army-order-btns">
+        <button class="btn btn-xs army-order-btn ${army.order !== 'hold' ? 'order-active' : ''}"
+          onclick="setArmyOrder('${army.id}', 'advance')">⚔ Advance</button>
+        <button class="btn btn-xs army-order-btn ${army.order === 'hold' ? 'order-active-hold' : ''}"
+          onclick="setArmyOrder('${army.id}', 'hold')">🛡 Hold</button>
+      </div>
+    </div>` : '';
+
+  return `
+    <div class="army-card" id="army-card-${army.id}">
+      <div class="army-card-header">
+        <div class="army-type-badge" style="background:${bgColor}">${tmpl.icon || '??'}</div>
+        <div class="army-info">
+          <div class="army-name">${army.name}</div>
+          <div class="army-sub">${tmpl.name || army.template_id} · ${army.num_divisions} div · ${UI.fmtArmy(army.manpower)} men</div>
+        </div>
+        <div class="army-status" style="color:${statusColor}">${statusLabel}</div>
+      </div>
+      ${!army.is_trained ? `
+        <div class="army-train-bar">
+          <div class="army-train-fill" style="width:${Math.round((army.training_progress/Math.max(1,army.training_turns_required))*100)}%"></div>
+        </div>` : `
+        <div class="army-health-row">
+          <span class="army-health-label">Str</span>
+          <div class="army-health-bar"><div class="army-health-fill" style="width:${Math.round(army.strength*100)}%;background:#22c55e"></div></div>
+          <span class="army-health-label">Org</span>
+          <div class="army-health-bar"><div class="army-health-fill" style="width:${Math.round(army.organization*100)}%;background:#3b82f6"></div></div>
+        </div>`}
+      ${assignedName ? `<div class="army-target">⚔ Attacking: ${assignedName}${sectorLabel}</div>` : ''}
+      ${orderHtml}
+      <div class="army-actions">
+        ${army.is_trained && army.status !== 'training' ? (
+          army.status === 'attacking' ? `
+            <button class="btn btn-secondary btn-xs" onclick="openAssignArmyModal('${army.id}')">Redirect</button>
+            <button class="btn btn-secondary btn-xs" onclick="recallArmy('${army.id}')">Recall</button>
+          ` : `
+            <button class="btn btn-danger btn-xs" onclick="openAssignArmyModal('${army.id}')">Attack</button>
+          `
+        ) : ''}
+        <button class="btn btn-secondary btn-xs" onclick="disbandArmy('${army.id}')">Disband</button>
       </div>
     </div>
   `;
 }
+
+async function setArmyOrder(armyId, order) {
+  try {
+    await API.setArmyOrder(gameId, armyId, order);
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Order failed: ${e.message}`, 'error');
+  }
+}
+window.setArmyOrder = setArmyOrder;
+
+function refreshWarMap(armies, fronts) {
+  if (!window.WarMapModule || !gameState) return;
+  WarMapModule.update(gameState, armies || [], fronts || []);
+}
+
+async function openCreateArmyModal() {
+  let templates = [];
+  try {
+    const data = await API.getArmyTemplates(gameId);
+    templates = data.templates || [];
+  } catch(e) { UI.notify('Failed to load templates.', 'error'); return; }
+
+  const modal = document.getElementById('create-army-modal');
+  if (!modal) return;
+
+  document.getElementById('cam-templates').innerHTML = templates.map(t => `
+    <div class="cam-template ${t.id === 'infantry' ? 'selected' : ''}" data-id="${t.id}" onclick="selectArmyTemplate(this, '${t.id}')">
+      <div class="cam-template-icon" style="background:${t.color}">${t.icon}</div>
+      <div class="cam-template-info">
+        <div class="cam-template-name">${t.name}</div>
+        <div class="cam-template-desc small text-dim">${t.description}</div>
+        <div class="cam-template-stats small">
+          ATK ${t.attack} · DEF ${t.defense} · BRK ${t.breakthrough} · ${t.training_turns} turns
+        </div>
+        <div class="cam-template-cost small text-gold">${t.manpower_per_div.toLocaleString()}/div · ${t.equipment_cost} equip</div>
+      </div>
+    </div>
+  `).join('');
+
+  UI.showModal('create-army-modal');
+}
+window.openCreateArmyModal = openCreateArmyModal;
+
+function selectArmyTemplate(el, templateId) {
+  document.querySelectorAll('.cam-template').forEach(t => t.classList.remove('selected'));
+  el.classList.add('selected');
+}
+window.selectArmyTemplate = selectArmyTemplate;
+
+async function confirmCreateArmy() {
+  const template_id = document.querySelector('.cam-template.selected')?.dataset.id || 'infantry';
+  const name = document.getElementById('cam-name')?.value.trim() || '';
+  const num_divisions = parseInt(document.getElementById('cam-divs')?.value || 3);
+
+  UI.hideModal('create-army-modal');
+  UI.showLoading('Recruiting army...');
+  try {
+    const result = await API.createArmy(gameId, { template_id, name, num_divisions });
+    UI.notify(result.message || 'Army created!', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Recruit failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.confirmCreateArmy = confirmCreateArmy;
+
+function openAssignArmyModal(armyId) {
+  // Build list of nations at war with player
+  const warEnemies = [];
+  for (const war of (gameState.active_wars || [])) {
+    if (war.status !== 'ongoing') continue;
+    if (war.attacker === gameState.player_nation_id) {
+      warEnemies.push(war.defender, ...war.defender_allies);
+    } else if (war.defender === gameState.player_nation_id) {
+      warEnemies.push(war.attacker, ...war.attacker_allies);
+    }
+  }
+  const uniqueEnemies = [...new Set(warEnemies)];
+
+  if (uniqueEnemies.length === 0) {
+    UI.notify('You must be at war to assign armies.', 'warning');
+    return;
+  }
+
+  const modal = document.getElementById('assign-army-modal');
+  if (!modal) return;
+  document.getElementById('aam-army-id').value = armyId;
+  document.getElementById('aam-army-name').textContent =
+    _armyData?.armies?.find(a => a.id === armyId)?.name || 'Army';
+
+  // Sector selector
+  const sectors = ['main', 'north', 'south', 'east', 'west', 'flank'];
+  const sectorEl = document.getElementById('aam-sector-select');
+  if (sectorEl) {
+    sectorEl.innerHTML = sectors.map(s =>
+      `<option value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)} Front</option>`
+    ).join('');
+    sectorEl.value = 'main';
+  }
+
+  // Show existing fronts for this army's current enemies
+  const existingFronts = (_armyData?.fronts || []).filter(
+    f => uniqueEnemies.includes(f.target_territory) && f.status === 'active'
+  );
+
+  const existingHtml = existingFronts.length > 0 ? `
+    <div class="aam-section-label">JOIN EXISTING FRONT</div>
+    ${existingFronts.map(f => `
+      <div class="aam-front-item" onclick="confirmAssignToFront('${armyId}', '${f.target_territory}', '${f.sector}', '${f.id}')">
+        <span class="aam-front-sector-badge">${(f.sector || 'MAIN').toUpperCase()}</span>
+        <span class="aam-front-name">→ ${f.defender_name || f.target_territory}</span>
+        <div class="aam-front-progress-bar"><div style="width:${Math.round(f.progress*100)}%;height:100%;background:#ef4444;border-radius:2px"></div></div>
+        <span class="aam-front-pct">${Math.round(f.progress*100)}%</span>
+        <span class="aam-front-armies">${f.army_count || 0} armies</span>
+      </div>`).join('')}
+    <div class="aam-divider">— OR OPEN NEW FRONT —</div>
+  ` : '';
+
+  document.getElementById('aam-targets').innerHTML = `
+    ${existingHtml}
+    <div class="aam-section-label">SELECT TARGET</div>
+    ${uniqueEnemies.map(nid => {
+      const n = gameState.nations[nid];
+      if (!n || !n.is_alive) return '';
+      return `
+        <div class="aam-target" onclick="confirmAssignArmy('${armyId}', '${nid}')">
+          ${getFlagImg(n.name, 'flag-img', n.ideology)} <span>${n.name}</span>
+          <span class="small text-dim">${UI.fmtArmy(n.military.army_size)} troops</span>
+        </div>`;
+    }).join('')}
+    <div class="aam-sector-row">
+      <label class="small text-dim">Sector:</label>
+      <select id="aam-sector-select" class="aam-sector-sel">
+        ${sectors.map(s => `<option value="${s}">${s.charAt(0).toUpperCase() + s.slice(1)} Front</option>`).join('')}
+      </select>
+      <label class="small text-dim" style="margin-left:8px">
+        <input type="checkbox" id="aam-new-front-cb"> New front
+      </label>
+    </div>
+  `;
+
+  UI.showModal('assign-army-modal');
+}
+window.openAssignArmyModal = openAssignArmyModal;
+
+async function confirmAssignArmy(armyId, targetId) {
+  const sector = document.getElementById('aam-sector-select')?.value || 'main';
+  const openNew = document.getElementById('aam-new-front-cb')?.checked || false;
+  UI.hideModal('assign-army-modal');
+  UI.showLoading('Assigning army...');
+  try {
+    const result = await API.assignArmy(gameId, armyId, targetId, sector, openNew);
+    UI.notify(result.message || 'Army assigned!', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Assignment failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.confirmAssignArmy = confirmAssignArmy;
+
+async function confirmAssignToFront(armyId, targetId, sector, frontId) {
+  UI.hideModal('assign-army-modal');
+  UI.showLoading('Reinforcing front...');
+  try {
+    const result = await API.assignArmy(gameId, armyId, targetId, sector, false);
+    UI.notify(result.message || 'Army reinforced front!', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Assignment failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.confirmAssignToFront = confirmAssignToFront;
+
+async function recallArmy(armyId) {
+  UI.showLoading('Recalling army...');
+  try {
+    const result = await API.recallArmy(gameId, armyId);
+    UI.notify(result.message || 'Army recalled.', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Recall failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.recallArmy = recallArmy;
+
+async function disbandArmy(armyId) {
+  if (!confirm('Disband this army? Some manpower will be returned.')) return;
+  UI.showLoading('Disbanding army...');
+  try {
+    const result = await API.disbandArmy(gameId, armyId);
+    UI.notify(result.message || 'Army disbanded.', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Disband failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.disbandArmy = disbandArmy;
+
+async function openConscriptionModal() {
+  let laws = [];
+  try {
+    const data = await API.getArmyTemplates(gameId);
+    laws = data.conscription_laws || [];
+  } catch(e) { return; }
+
+  const player = gameState.nations[gameState.player_nation_id];
+  const currentLaw = player?.conscription_law || 'limited_conscription';
+
+  const modal = document.getElementById('conscription-modal');
+  if (!modal) return;
+
+  document.getElementById('conscription-laws-list').innerHTML = laws.map(l => `
+    <div class="conscription-law-item ${l.id === currentLaw ? 'current' : ''}" onclick="setConscriptionLaw('${l.id}')">
+      <div class="cl-header">
+        <span class="cl-name">${l.name}</span>
+        ${l.id === currentLaw ? '<span class="cl-badge">CURRENT</span>' : `<span class="cl-cost">${l.political_power_cost} PP</span>`}
+      </div>
+      <div class="cl-desc small text-dim">${l.description}</div>
+      <div class="cl-rate small text-gold">${(l.manpower_rate * 100).toFixed(1)}% mobilization rate</div>
+    </div>
+  `).join('');
+
+  UI.showModal('conscription-modal');
+}
+window.openConscriptionModal = openConscriptionModal;
+
+async function setConscriptionLaw(lawId) {
+  UI.hideModal('conscription-modal');
+  UI.showLoading('Changing conscription law...');
+  try {
+    const result = await API.setConscription(gameId, lawId);
+    UI.notify(result.message || 'Conscription law changed.', 'success');
+    gameState = await API.getState(gameId);
+    await renderMilitaryPanel();
+  } catch(e) {
+    UI.notify(`Error: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.setConscriptionLaw = setConscriptionLaw;
+
+// Army counter click on map — open the assign modal
+window.onArmyCounterClick = function(armyId) {
+  const army = _armyData?.armies?.find(a => a.id === armyId);
+  if (!army) return;
+  if (army.status === 'attacking') {
+    if (confirm(`Recall ${army.name} from the front?`)) recallArmy(armyId);
+  } else if (army.is_trained) {
+    openAssignArmyModal(armyId);
+  }
+};
 
 function renderNewsPanel() {
   const el = document.getElementById('news-content');
@@ -1264,7 +1753,7 @@ function openNationModal(nationId) {
   );
 
   document.getElementById('modal-nation-title').textContent = nation.name;
-  document.getElementById('modal-nation-flag').innerHTML = getFlagImg(nation.name, 'flag-img-lg');
+  document.getElementById('modal-nation-flag').innerHTML = getFlagImg(nation.name, 'flag-img-lg', nation.ideology);
 
   const body = document.getElementById('modal-nation-body');
   body.innerHTML = `
@@ -1504,6 +1993,54 @@ function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
 }
+
+// ── Save & Sandbox ────────────────────────────────────────────────────
+
+async function manualSave() {
+  const btn = document.getElementById('btn-save-game');
+  if (btn) { btn.disabled = true; btn.textContent = '💾 Saving...'; }
+  try {
+    const result = await API.saveGame(gameId);
+    UI.notify(`Game saved — Turn ${result.turn}, ${UI.monthName(result.month)} ${result.year}`, 'success');
+  } catch(e) {
+    UI.notify(`Save failed: ${e.message}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Save'; }
+  }
+}
+window.manualSave = manualSave;
+
+function openSandbox() {
+  const log = document.getElementById('sandbox-log');
+  if (log) { log.style.display = 'none'; log.innerHTML = ''; }
+  UI.showModal('sandbox-modal');
+}
+window.openSandbox = openSandbox;
+
+async function sb(action, extras) {
+  try {
+    const result = await API.sandbox(gameId, action, extras || {});
+    const log = document.getElementById('sandbox-log');
+    if (log) {
+      log.style.display = 'block';
+      log.innerHTML += `<div class="sb-log-entry">✓ ${result.messages?.join(' · ') || action}</div>`;
+      log.scrollTop = log.scrollHeight;
+    }
+    // Reload state and refresh UI
+    gameState = await API.getState(gameId);
+    renderAll();
+    // Also refresh military panel since armies/manpower may have changed
+    await renderMilitaryPanel();
+  } catch(e) {
+    const log = document.getElementById('sandbox-log');
+    if (log) {
+      log.style.display = 'block';
+      log.innerHTML += `<div class="sb-log-entry" style="color:#ef4444">✗ ${e.message}</div>`;
+    }
+    UI.notify(`Sandbox error: ${e.message}`, 'error');
+  }
+}
+window.sb = sb;
 
 // ── Boot ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', initApp);

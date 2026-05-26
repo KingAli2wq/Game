@@ -139,6 +139,7 @@
         <span id="tension-val" class="small bold">30%</span>
       </div>
 
+      <button class="btn btn-secondary btn-sm" id="btn-save-game" onclick="manualSave()" title="Save game">💾 Save</button>
       <button class="btn btn-secondary btn-sm" onclick="location.reload()">Menu</button>
     </div>
 
@@ -262,6 +263,9 @@
         Click nations on map or in Nations panel for diplomacy & war
       </div>
       <div style="flex:1"></div>
+      <button id="btn-sandbox" class="btn btn-secondary" onclick="openSandbox()" style="margin-right:4px" title="Sandbox / Cheat Panel">
+        🧪 Sandbox
+      </button>
       <button id="btn-research" class="btn btn-secondary" onclick="window.__debugBanner && window.__debugBanner('Research click'); openTechTree && openTechTree()" style="margin-right:4px">
         ⚗️ Research
       </button>
@@ -368,6 +372,72 @@
   </div>
 </div>
 
+<!-- Create Army Modal -->
+<div id="create-army-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">⚔ Recruit Army Group</span>
+      <button class="modal-close" data-close-modal="create-army-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Army Name (optional)</label>
+        <input id="cam-name" class="form-input" type="text" placeholder="e.g. 1st Corps, Eastern Army..." maxlength="40">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Number of Divisions</label>
+        <input id="cam-divs" class="form-input" type="number" min="1" max="15" value="3">
+        <div class="small text-dim mt-1">More divisions = more manpower and equipment cost</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Division Template</label>
+        <div id="cam-templates" class="cam-template-list"></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" data-close-modal="create-army-modal">Cancel</button>
+      <button class="btn btn-primary btn-sm" onclick="confirmCreateArmy()">Recruit Army</button>
+    </div>
+  </div>
+</div>
+
+<!-- Assign Army Modal -->
+<div id="assign-army-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header">
+      <span class="modal-title">⚔ Assign Attack Order</span>
+      <button class="modal-close" data-close-modal="assign-army-modal">×</button>
+    </div>
+    <div class="modal-body" style="max-height:70vh;overflow-y:auto">
+      <p class="text-dim small mb-2">
+        Assign <strong id="aam-army-name">Army</strong> to a front. Join an existing front or open a new axis of advance.
+      </p>
+      <input type="hidden" id="aam-army-id">
+      <div id="aam-targets" class="aam-target-list"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" data-close-modal="assign-army-modal">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Conscription Modal -->
+<div id="conscription-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title">📋 Conscription Law</span>
+      <button class="modal-close" data-close-modal="conscription-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-dim small mb-2">Choose how many citizens are mobilized for military service. Higher laws cost Political Power and may reduce stability.</p>
+      <div id="conscription-laws-list"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" data-close-modal="conscription-modal">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Peace Terms Modal -->
 <div id="peace-modal" class="modal-overlay hidden">
   <div class="modal">
@@ -378,6 +448,47 @@
     <div class="modal-body">
       <p class="text-dim small mb-2">Choose the terms of peace. Higher warscore allows more punishing terms.</p>
       <div id="peace-terms-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Sandbox Modal -->
+<div id="sandbox-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">🧪 Sandbox / Cheat Panel</span>
+      <button class="modal-close" data-close-modal="sandbox-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-dim small mb-3" style="color:#f59e0b">⚠ For testing only. These cheats modify your game state instantly.</p>
+
+      <div class="sandbox-section-title">RESOURCES</div>
+      <div class="sandbox-grid">
+        <button class="sandbox-btn" onclick="sb('add_manpower')">+1M Manpower</button>
+        <button class="sandbox-btn" onclick="sb('add_equipment')">+5k Equipment</button>
+        <button class="sandbox-btn" onclick="sb('add_political_power')">+300 Pol. Power</button>
+        <button class="sandbox-btn" onclick="sb('boost_economy')">Boost Economy</button>
+        <button class="sandbox-btn" onclick="sb('add_stability')">+Stability & War Support</button>
+      </div>
+
+      <div class="sandbox-section-title" style="margin-top:12px">ARMIES</div>
+      <div class="sandbox-grid">
+        <button class="sandbox-btn" onclick="sb('instant_train')">Instant Train All Armies</button>
+        <button class="sandbox-btn" onclick="sb('add_armies')">Spawn 3 Test Armies</button>
+      </div>
+
+      <div class="sandbox-section-title" style="margin-top:12px">WAR</div>
+      <div class="sandbox-grid">
+        <button class="sandbox-btn sandbox-btn-danger" onclick="sb('max_warscore')">Max Warscore</button>
+        <button class="sandbox-btn sandbox-btn-danger" onclick="sb('capture_all_fronts')">Capture All Fronts</button>
+        <button class="sandbox-btn" onclick="sb('reduce_tension')">-30% World Tension</button>
+        <button class="sandbox-btn" onclick="sb('increase_tension')">+30% World Tension</button>
+      </div>
+
+      <div id="sandbox-log" class="sandbox-log" style="display:none"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" data-close-modal="sandbox-modal">Close</button>
     </div>
   </div>
 </div>
@@ -423,6 +534,7 @@
 <script src="/static/js/api.js"></script>
 <script src="/static/js/ui.js"></script>
 <script src="/static/js/map.js"></script>
+<script src="/static/js/war-map.js"></script>
 <script src="/static/js/tech-tree.js"></script>
 <script src="/static/js/main.js"></script>
 

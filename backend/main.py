@@ -10,10 +10,12 @@ from pydantic import BaseModel
 from backend import ai_engine, game_logic, database
 from backend.models import (
     GameState, NewGameRequest, DiplomacyAction, IssueResponse,
-    DeclareWarRequest, War, ResourceTradeOffer,
+    DeclareWarRequest, War, WarFront, ResourceTradeOffer,
     ResourceTradeRequest, TroopRequest, TechPurchaseRequest,
-    JointResearchRequest, AllianceUpgradeRequest
+    JointResearchRequest, AllianceUpgradeRequest,
+    ArmyDivision, CreateArmyRequest, AssignArmyRequest, ConscriptionRequest,
 )
+from backend.army_templates import get_template, all_templates, get_conscription_law, all_conscription_laws
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
@@ -180,7 +182,17 @@ async def _bg_world_gen(game_id: str, era_id: str, era: dict, player_nation: str
 @app.get("/api/game/{game_id}")
 async def get_game_state(game_id: str):
     state = await _get_state(game_id)
+    # Restart the real-time clock if it died (e.g. after server restart / save load)
+    if state.game_id not in _clock_tasks or _clock_tasks[state.game_id].done():
+        _clock_tasks[state.game_id] = asyncio.create_task(_run_game_clock(state.game_id))
     return state.model_dump()
+
+
+@app.post("/api/game/{game_id}/save")
+async def manual_save(game_id: str):
+    state = await _get_state(game_id)
+    await database.save_game(state)
+    return {"message": "Game saved.", "turn": state.turn, "year": state.year, "month": state.month}
 
 
 @app.delete("/api/game/{game_id}")
@@ -399,8 +411,19 @@ async def make_peace(game_id: str, war_id: str, body: dict):
 
     if term_id == "annex" and winner_id == state.player_nation_id and war.attacker_warscore >= 80:
         if loser:
+            # Transfer all loser's territories and occupied territories to winner
+            for tid in list(loser.controlled_territories):
+                if tid not in player.controlled_territories:
+                    player.controlled_territories.append(tid)
+            for tid in list(war.occupied_territories.keys()):
+                if war.occupied_territories[tid] == winner_id and tid not in player.controlled_territories:
+                    player.controlled_territories.append(tid)
+            if loser_id not in player.controlled_territories:
+                player.controlled_territories.append(loser_id)
+            loser.controlled_territories.clear()
             loser.is_alive = False
             player.economy.gdp += loser.economy.gdp * 0.5
+            player.economy.factories += max(1, loser.economy.factories // 3)
             player.prestige = min(200, player.prestige + 25)
             state.add_news(f"{player.name} annexes {loser.name}", state.player_nation_id, "war")
 
@@ -409,6 +432,10 @@ async def make_peace(game_id: str, war_id: str, body: dict):
             loser.diplomacy.overlord = state.player_nation_id
             player.diplomacy.puppets.append(loser_id)
             player.prestige = min(200, player.prestige + 15)
+            # Transfer occupied territories to winner (keep loser alive)
+            for tid in list(war.occupied_territories.keys()):
+                if war.occupied_territories[tid] == winner_id and tid not in player.controlled_territories:
+                    player.controlled_territories.append(tid)
             state.add_news(f"{player.name} installs puppet in {loser.name}", state.player_nation_id, "war")
 
     elif term_id == "reparations" and winner_id == state.player_nation_id:
@@ -428,6 +455,14 @@ async def make_peace(game_id: str, war_id: str, body: dict):
             state.world_tension = max(0.05, state.world_tension - 0.05)
             state.add_news(f"{player.name} magnanimously liberates {loser.name}", state.player_nation_id, "diplomacy")
 
+    # Status-quo: transfer already-occupied territories to whoever holds them
+    if term_id == "status_quo":
+        for territory_id, occupier_id in list(war.occupied_territories.items()):
+            occupier = state.nations.get(occupier_id)
+            if occupier and territory_id not in occupier.controlled_territories:
+                occupier.controlled_territories.append(territory_id)
+                state.nations[occupier_id] = occupier
+
     # End war
     state.active_wars = [w for w in state.active_wars if w.id != war_id]
     for nid in [war.attacker, war.defender] + war.attacker_allies + war.defender_allies:
@@ -435,6 +470,12 @@ async def make_peace(game_id: str, war_id: str, body: dict):
         if n:
             n.is_at_war = False
             state.nations[nid] = n
+    # Recall all player armies from this war
+    for army in state.player_armies:
+        if army.status == "attacking":
+            army.status = "ready"
+            army.assigned_target = None
+            army.front_id = None
 
     if winner:
         state.nations[winner_id] = winner
@@ -472,6 +513,282 @@ async def get_peace_terms(game_id: str, war_id: str):
             "effects": {"prestige": 15, "world_tension_change": -0.05}
         })
     return terms
+
+
+# ── Army Management ─────────────────────────────────────────────────────────
+
+
+@app.get("/api/game/{game_id}/military/templates")
+async def get_army_templates(game_id: str):
+    return {"templates": all_templates(), "conscription_laws": all_conscription_laws()}
+
+
+@app.get("/api/game/{game_id}/military/armies")
+async def get_armies(game_id: str):
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    enriched = []
+    for army in state.player_armies:
+        tmpl = get_template(army.template_id)
+        enriched.append({**army.model_dump(), "template": tmpl})
+    fronts_data = []
+    for war in state.active_wars:
+        for front in war.fronts:
+            def_nation = state.nations.get(front.defender_nation)
+            # Count armies assigned to this front
+            armies_on_front = [
+                a for a in state.player_armies
+                if a.front_id == front.id or (not a.front_id and a.assigned_target == front.target_territory and a.status == "attacking")
+            ]
+            fronts_data.append({
+                **front.model_dump(),
+                "defender_name": def_nation.name if def_nation else front.defender_nation,
+                "army_count": len(armies_on_front),
+                "warscore": war.attacker_warscore,
+                "war_id": war.id,
+            })
+    manpower_cap = int(player.population * 0.15) if player else 0
+    return {
+        "armies": enriched,
+        "fronts": fronts_data,
+        "manpower_pool": player.military.manpower_pool if player else 0,
+        "manpower_cap": manpower_cap,
+        "conscription_law": player.conscription_law if player else "limited_conscription",
+    }
+
+
+@app.post("/api/game/{game_id}/military/army/create")
+async def create_army(game_id: str, req: CreateArmyRequest):
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    if not player:
+        raise HTTPException(status_code=404, detail="Player nation not found")
+
+    tmpl = get_template(req.template_id)
+    if not tmpl:
+        raise HTTPException(status_code=400, detail=f"Unknown template: {req.template_id}")
+
+    num_divs = max(1, min(15, req.num_divisions))
+    manpower_cost = tmpl["manpower_per_div"] * num_divs
+    equipment_cost = tmpl["equipment_cost"] * num_divs
+
+    if player.military.manpower_pool < manpower_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient manpower: need {manpower_cost:,}, have {player.military.manpower_pool:,}",
+        )
+    if player.economy.stockpile.get("equipment", 0) < equipment_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient equipment: need {equipment_cost:.0f}, have {player.economy.stockpile.get('equipment', 0):.0f}",
+        )
+    if len(state.player_armies) >= 10:
+        raise HTTPException(status_code=400, detail="Maximum 10 army groups allowed")
+
+    name = req.name.strip() or f"{tmpl['name']} {len(state.player_armies) + 1}"
+    army = ArmyDivision(
+        name=name,
+        nation_id=state.player_nation_id,
+        template_id=req.template_id,
+        num_divisions=num_divs,
+        manpower=manpower_cost,
+        training_turns_required=tmpl["training_turns"],
+        location=state.player_nation_id,
+        created_turn=state.turn,
+    )
+
+    player.military.manpower_pool -= manpower_cost
+    player.economy.stockpile["equipment"] = max(
+        0, player.economy.stockpile.get("equipment", 0) - equipment_cost
+    )
+    state.nations[state.player_nation_id] = player
+    state.player_armies.append(army)
+
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {
+        "army_id": army.id,
+        "message": f"{name} enters training ({tmpl['training_turns']} turns to ready)",
+    }
+
+
+@app.post("/api/game/{game_id}/military/army/{army_id}/assign")
+async def assign_army(game_id: str, army_id: str, req: AssignArmyRequest):
+    state = await _get_state(game_id)
+    army = next((a for a in state.player_armies if a.id == army_id), None)
+    if not army:
+        raise HTTPException(status_code=404, detail="Army not found")
+    if not army.is_trained:
+        raise HTTPException(status_code=400, detail="Army is still in training")
+
+    target_id = req.target_nation_id
+    if target_id not in state.nations:
+        raise HTTPException(status_code=400, detail="Target nation not found")
+
+    # Must be at war with that nation
+    active_war = next(
+        (w for w in state.active_wars if w.status == "ongoing" and (
+            (w.attacker == state.player_nation_id and w.defender == target_id) or
+            (w.defender == state.player_nation_id and w.attacker == target_id) or
+            target_id in w.defender_allies or target_id in w.attacker_allies
+        )),
+        None,
+    )
+    if not active_war:
+        raise HTTPException(status_code=400, detail="Not at war with that nation")
+
+    army.assigned_target = target_id
+    army.status = "attacking"
+
+    # Determine which side we're on
+    if active_war.attacker == state.player_nation_id:
+        att_id, def_id = state.player_nation_id, active_war.defender
+    else:
+        att_id, def_id = state.player_nation_id, active_war.attacker
+
+    sector = (req.sector or "main").strip().lower()
+    valid_sectors = {"main", "north", "south", "east", "west", "flank"}
+    if sector not in valid_sectors:
+        sector = "main"
+
+    # Find or create a front for this target+sector combination
+    if req.open_new_front:
+        # Force a new front (player wants a distinct axis of advance)
+        front = WarFront(
+            war_id=active_war.id,
+            attacker_nation=att_id,
+            defender_nation=target_id,
+            target_territory=target_id,
+            sector=sector,
+        )
+        active_war.fronts.append(front)
+    else:
+        existing = next(
+            (f for f in active_war.fronts
+             if f.target_territory == target_id and f.sector == sector and f.status == "active"),
+            None,
+        )
+        if not existing:
+            existing = WarFront(
+                war_id=active_war.id,
+                attacker_nation=att_id,
+                defender_nation=target_id,
+                target_territory=target_id,
+                sector=sector,
+            )
+            active_war.fronts.append(existing)
+        front = existing
+
+    army.front_id = front.id
+
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    target_name = state.nations[target_id].name
+    sector_label = f" [{sector.upper()}]" if sector != "main" else ""
+    return {"message": f"{army.name} assigned to attack {target_name}{sector_label}"}
+
+
+@app.post("/api/game/{game_id}/military/army/{army_id}/recall")
+async def recall_army(game_id: str, army_id: str):
+    state = await _get_state(game_id)
+    army = next((a for a in state.player_armies if a.id == army_id), None)
+    if not army:
+        raise HTTPException(status_code=404, detail="Army not found")
+
+    army.assigned_target = None
+    army.front_id = None
+    army.status = "ready" if army.is_trained else "training"
+
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {"message": f"{army.name} recalled"}
+
+
+@app.post("/api/game/{game_id}/military/army/{army_id}/order")
+async def set_army_order(game_id: str, army_id: str, body: dict):
+    state = await _get_state(game_id)
+    army = next((a for a in state.player_armies if a.id == army_id), None)
+    if not army:
+        raise HTTPException(status_code=404, detail="Army not found")
+
+    order = body.get("order", "advance")
+    if order not in ("advance", "hold"):
+        raise HTTPException(status_code=400, detail="Invalid order — use: advance or hold")
+
+    army.order = order
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {"message": f"{army.name}: order set to {order}"}
+
+
+@app.delete("/api/game/{game_id}/military/army/{army_id}")
+async def disband_army(game_id: str, army_id: str):
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    army = next((a for a in state.player_armies if a.id == army_id), None)
+    if not army:
+        raise HTTPException(status_code=404, detail="Army not found")
+
+    # Return some manpower on disband
+    if army.is_trained and player:
+        returned = int(army.manpower * 0.5 * army.strength)
+        cap = int(player.population * 0.15)
+        player.military.manpower_pool = min(cap, player.military.manpower_pool + returned)
+        state.nations[state.player_nation_id] = player
+
+    state.player_armies = [a for a in state.player_armies if a.id != army_id]
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {"message": f"{army.name} disbanded"}
+
+
+@app.post("/api/game/{game_id}/military/conscription")
+async def set_conscription(game_id: str, req: ConscriptionRequest):
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    if not player:
+        raise HTTPException(status_code=400, detail="No player nation")
+
+    law = get_conscription_law(req.law_id)
+    if not law:
+        raise HTTPException(status_code=400, detail=f"Unknown conscription law: {req.law_id}")
+
+    pp_cost = law["political_power_cost"]
+    if player.political_power < pp_cost:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Insufficient political power: need {pp_cost}, have {player.political_power:.0f}",
+        )
+
+    player.political_power -= pp_cost
+    player.conscription_law = req.law_id
+    # Apply stability bonus/penalty
+    player.stability = max(0.05, min(1.0, player.stability + law["stability_bonus"]))
+    state.nations[state.player_nation_id] = player
+
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {"message": f"Conscription law changed to {law['name']}"}
+
+
+@app.get("/api/game/{game_id}/military/war-fronts")
+async def get_war_fronts(game_id: str):
+    state = await _get_state(game_id)
+    result = []
+    for war in state.active_wars:
+        for front in war.fronts:
+            att = state.nations.get(front.attacker_nation)
+            def_ = state.nations.get(front.defender_nation)
+            result.append({
+                **front.model_dump(),
+                "attacker_name": att.name if att else front.attacker_nation,
+                "defender_name": def_.name if def_ else front.defender_nation,
+                "warscore": war.attacker_warscore,
+            })
+    return {"fronts": result}
+
+
+# ── Economy ─────────────────────────────────────────────────────────────────
 
 
 @app.get("/api/game/{game_id}/economy/policy")
@@ -1046,6 +1363,119 @@ async def stream_news(game_id: str):
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+# ── Sandbox / Cheat Panel ───────────────────────────────────────────────────
+
+
+@app.post("/api/game/{game_id}/sandbox")
+async def sandbox_action(game_id: str, body: dict):
+    """Developer sandbox: instant cheats for testing game features."""
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    if not player:
+        raise HTTPException(status_code=400, detail="No player nation")
+
+    action = body.get("action", "")
+    messages = []
+
+    if action == "add_manpower":
+        amount = int(body.get("amount", 1_000_000))
+        player.military.manpower_pool = min(
+            int(player.population * 0.25),
+            player.military.manpower_pool + amount,
+        )
+        messages.append(f"+{amount:,} manpower")
+
+    elif action == "add_equipment":
+        amount = float(body.get("amount", 5000))
+        player.economy.stockpile["equipment"] = min(
+            9999, player.economy.stockpile.get("equipment", 0) + amount
+        )
+        messages.append(f"+{amount:.0f} equipment")
+
+    elif action == "add_political_power":
+        amount = float(body.get("amount", 300))
+        player.political_power = min(999, player.political_power + amount)
+        messages.append(f"+{amount:.0f} political power")
+
+    elif action == "add_stability":
+        player.stability = min(1.0, player.stability + 0.25)
+        player.war_support = min(1.0, player.war_support + 0.25)
+        messages.append("Stability and war support boosted")
+
+    elif action == "boost_economy":
+        player.economy.gdp = player.economy.gdp * 1.5
+        for res in ["steel", "fuel", "equipment"]:
+            player.economy.stockpile[res] = min(9999, player.economy.stockpile.get(res, 0) + 2000)
+        player.economy.gdp_growth = 0.08
+        messages.append("Economy boosted: GDP ×1.5, stockpiles +2000 each")
+
+    elif action == "instant_train":
+        count = 0
+        for army in state.player_armies:
+            if not army.is_trained:
+                army.training_progress = army.training_turns_required
+                army.is_trained = True
+                army.status = "ready"
+                army.organization = 1.0
+                count += 1
+        messages.append(f"{count} armies instantly trained")
+
+    elif action == "max_warscore":
+        for war in state.active_wars:
+            if war.attacker == state.player_nation_id or state.player_nation_id in war.attacker_allies:
+                war.attacker_warscore = 100
+            elif war.defender == state.player_nation_id or state.player_nation_id in war.defender_allies:
+                war.attacker_warscore = -100
+        messages.append("Warscore set to maximum")
+
+    elif action == "capture_all_fronts":
+        from backend.models import WarFront
+        for war in state.active_wars:
+            for front in war.fronts:
+                if front.attacker_nation == state.player_nation_id:
+                    front.progress = 1.0
+                    front.status = "captured"
+                    war.occupied_territories[front.target_territory] = state.player_nation_id
+                    war.attacker_warscore = min(100, war.attacker_warscore + 20)
+        messages.append("All fronts captured")
+
+    elif action == "add_armies":
+        from backend.models import ArmyDivision
+        templates = ["infantry", "armor", "motorized"]
+        for i, tmpl_id in enumerate(templates):
+            army = ArmyDivision(
+                name=f"Test {tmpl_id.title()} {i+1}",
+                nation_id=state.player_nation_id,
+                template_id=tmpl_id,
+                num_divisions=3,
+                manpower=30000,
+                training_turns_required=0,
+                is_trained=True,
+                organization=1.0,
+                status="ready",
+                location=state.player_nation_id,
+                created_turn=state.turn,
+            )
+            state.player_armies.append(army)
+        messages.append("Added 3 test army groups (infantry/armor/motorized)")
+
+    elif action == "reduce_tension":
+        state.world_tension = max(0.05, state.world_tension - 0.3)
+        messages.append(f"World tension → {state.world_tension*100:.0f}%")
+
+    elif action == "increase_tension":
+        state.world_tension = min(1.0, state.world_tension + 0.3)
+        messages.append(f"World tension → {state.world_tension*100:.0f}%")
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown sandbox action: {action}")
+
+    state.nations[state.player_nation_id] = player
+    await _save_state(state)
+    await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
+    return {"messages": messages, "action": action}
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────
