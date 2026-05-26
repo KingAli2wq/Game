@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grand Strategy AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ████ MAIN MENU ████ -->
+<div id="menu-screen" class="screen active">
+  <div class="menu-logo"><i data-lucide="globe" class="menu-logo-icon"></i></div>
+  <div class="menu-title">GRAND STRATEGY</div>
+  <div class="menu-subtitle">Powered by AI · Every World Unique</div>
+  <div id="ai-status" style="font-size:12px; color:var(--text-dim)">● Connecting...</div>
+  <div class="menu-buttons">
+    <button id="btn-new-game" class="btn btn-primary btn-lg btn-full">New Campaign</button>
+    <button id="btn-load-game" class="btn btn-secondary btn-lg btn-full">Load Game</button>
+  </div>
+  <div style="font-size:11px; color:var(--text-dim); margin-top:16px">
+    Hearts of Iron × NationStates · AI-driven geopolitics
+  </div>
+</div>
+
+<!-- ████ SETUP SCREEN ████ -->
+<div id="setup-screen" class="screen">
+  <div class="setup-container">
+    <div class="setup-title">NEW CAMPAIGN</div>
+
+    <div class="form-group">
+      <label class="form-label">Historical Era</label>
+      <select id="era-select" class="form-select"><option value="">Loading...</option></select>
+      <div id="era-description" class="small text-dim mt-1" style="font-style:italic"></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Your Nation</label>
+      <select id="nation-input" class="form-select"></select>
+      <input id="nation-custom" class="form-input mt-1" type="text" placeholder="Or type any nation name (e.g. Byzantine Empire, Mars Colony...)" />
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Starting Ideology</label>
+      <div class="ideology-grid">
+        <button class="ideology-btn" data-ideology="Liberal Democracy">Liberal<br>Democracy</button>
+        <button class="ideology-btn" data-ideology="Social Democracy">Social<br>Democracy</button>
+        <button class="ideology-btn" data-ideology="Conservative Democracy">Conservative</button>
+        <button class="ideology-btn" data-ideology="Socialism">Socialism</button>
+        <button class="ideology-btn" data-ideology="Communism">Communism</button>
+        <button class="ideology-btn" data-ideology="Fascism">Fascism</button>
+        <button class="ideology-btn" data-ideology="Monarchy">Monarchy</button>
+        <button class="ideology-btn" data-ideology="Theocracy">Theocracy</button>
+        <button class="ideology-btn" data-ideology="Technocracy">Technocracy</button>
+        <button class="ideology-btn" data-ideology="Oligarchy">Oligarchy</button>
+      </div>
+    </div>
+
+    <div class="flex gap-2">
+      <button id="btn-back-menu" class="btn btn-secondary btn-full">Back</button>
+      <button id="btn-start-game" class="btn btn-primary btn-full">Begin Campaign →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ████ WORLD GEN LOADING SCREEN ████ -->
+<div id="worldgen-screen" class="screen">
+  <div class="wg-bg"></div>
+  <div class="wg-content">
+    <div class="wg-globe">
+      <svg viewBox="0 0 120 120" class="wg-globe-svg">
+        <circle cx="60" cy="60" r="54" fill="none" stroke="#1d4ed8" stroke-width="1.5" opacity="0.4"/>
+        <circle cx="60" cy="60" r="54" fill="none" stroke="#c9a84c" stroke-width="0.5" stroke-dasharray="8 4" opacity="0.3" class="wg-orbit"/>
+        <circle cx="60" cy="60" r="38" fill="none" stroke="#1d4ed8" stroke-width="1" opacity="0.3"/>
+        <circle cx="60" cy="60" r="22" fill="none" stroke="#1d4ed8" stroke-width="0.8" opacity="0.2"/>
+        <line x1="6" y1="60" x2="114" y2="60" stroke="#1d4ed8" stroke-width="0.5" opacity="0.3"/>
+        <line x1="60" y1="6" x2="60" y2="114" stroke="#1d4ed8" stroke-width="0.5" opacity="0.3"/>
+        <circle cx="60" cy="60" r="6" fill="#c9a84c" opacity="0.9"/>
+        <circle cx="60" cy="60" r="10" fill="none" stroke="#c9a84c" stroke-width="1" opacity="0.5" class="wg-pulse"/>
+        <circle cx="60" cy="6" r="3" fill="#1d4ed8" class="wg-dot-orbit"/>
+      </svg>
+    </div>
+
+    <div class="wg-title">GENERATING WORLD</div>
+    <div class="wg-era" id="wg-era-label">Initialising...</div>
+
+    <div class="wg-steps" id="wg-steps">
+      <div class="wg-step" id="wgs-0"><span class="wg-step-icon">○</span> Consulting historical records</div>
+      <div class="wg-step" id="wgs-1"><span class="wg-step-icon">○</span> Placing nations on the map</div>
+      <div class="wg-step" id="wgs-2"><span class="wg-step-icon">○</span> Assigning leaders &amp; ideologies</div>
+      <div class="wg-step" id="wgs-3"><span class="wg-step-icon">○</span> Building economies &amp; armies</div>
+      <div class="wg-step" id="wgs-4"><span class="wg-step-icon">○</span> Establishing diplomacy</div>
+      <div class="wg-step" id="wgs-5"><span class="wg-step-icon">○</span> Generating opening issues</div>
+    </div>
+
+    <div class="wg-timer" id="wg-timer">0s elapsed</div>
+    <button class="btn btn-secondary btn-sm wg-cancel" onclick="cancelNewGame()">Cancel</button>
+  </div>
+</div>
+
+<!-- ████ GAME SCREEN ████ -->
+<div id="game-screen" class="screen">
+  <div id="app">
+
+    <!-- TOP BAR -->
+    <div id="topbar">
+      <span id="tb-flag" style="font-size:22px">🏳️</span>
+      <span id="tb-nation-name" class="topbar-nation">—</span>
+
+      <div class="topbar-stat">
+        <span class="topbar-stat-label">GDP</span>
+        <span id="tb-gdp" class="topbar-stat-value text-green">—</span>
+      </div>
+      <div class="topbar-stat">
+        <span class="topbar-stat-label">Stability</span>
+        <span id="tb-stability" class="topbar-stat-value">—</span>
+      </div>
+      <div class="topbar-stat">
+        <span class="topbar-stat-label">Prestige</span>
+        <span id="tb-prestige" class="topbar-stat-value text-gold">—</span>
+      </div>
+      <div class="topbar-stat">
+        <span class="topbar-stat-label">Army</span>
+        <span id="tb-army" class="topbar-stat-value">—</span>
+      </div>
+
+      <div style="flex:1"></div>
+      <span id="tb-date" class="topbar-date text-gold bold">—</span>
+      <div style="flex:1"></div>
+
+      <div class="tension-bar">
+        <span class="tension-label">World Tension</span>
+        <div class="tension-track">
+          <div id="tension-fill" class="tension-fill" style="width:30%"></div>
+        </div>
+        <span id="tension-val" class="small bold">30%</span>
+      </div>
+
+      <button class="btn btn-secondary btn-sm" onclick="location.reload()">Menu</button>
+    </div>
+
+    <!-- LEFT PANEL: Nation + Issues -->
+    <div id="left-panel">
+      <div id="left-tabs" class="tab-bar">
+        <button class="tab-btn active" data-tab="nation-tab">Nation</button>
+        <button class="tab-btn" data-tab="issues-tab">Issues</button>
+        <button class="tab-btn" data-tab="policies-tab">Policies</button>
+        <button class="tab-btn" data-tab="military-tab">Military</button>
+      </div>
+
+      <div id="nation-tab" class="tab-content active">
+        <div class="panel-section">
+          <div id="nation-panel-content"><p class="text-dim small p-2">Loading...</p></div>
+        </div>
+      </div>
+
+      <div id="issues-tab" class="tab-content">
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-title">Pending Issues</span>
+            <span class="small text-dim" style="font-size:10px">Resolve issues to shape your nation</span>
+          </div>
+          <div id="issues-content"></div>
+        </div>
+      </div>
+
+      <div id="policies-tab" class="tab-content">
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-title">Government Policies</span>
+          </div>
+          <div id="policies-slots-bar"></div>
+          <div id="policies-content"><p class="text-dim small p-2">Loading...</p></div>
+        </div>
+      </div>
+
+      <div id="military-tab" class="tab-content">
+        <div class="panel-section">
+          <div class="panel-header"><span class="panel-title">Military Status</span></div>
+          <div id="military-content"><p class="text-dim small p-2">Loading...</p></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAP CENTER -->
+    <div id="map-container">
+      <div id="map-tooltip"></div>
+      <div id="ideology-legend"></div>
+    </div>
+
+    <!-- RIGHT PANEL: Diplomacy + Economy + News -->
+    <div id="right-panel">
+      <div id="right-tabs" class="tab-bar">
+        <button class="tab-btn active" data-tab="diplomacy-tab">Nations</button>
+        <button class="tab-btn" data-tab="economy-tab">Economy</button>
+        <button class="tab-btn" data-tab="news-tab">News</button>
+      </div>
+
+      <div id="diplomacy-tab" class="tab-content active">
+        <div class="panel-header" style="padding:8px 12px">
+          <span class="panel-title">World Nations</span>
+        </div>
+        <div id="diplomacy-content"></div>
+      </div>
+
+      <div id="economy-tab" class="tab-content">
+        <!-- Economy Overview -->
+        <div class="panel-section">
+          <div class="panel-header"><span class="panel-title">Economy Overview</span></div>
+          <div id="eco-overview-content"><p class="text-dim small p-2">Loading...</p></div>
+        </div>
+
+        <!-- Stockpile & Factories -->
+        <div class="panel-section">
+          <div class="panel-header"><span class="panel-title">Industry & Stockpile</span></div>
+          <div id="eco-stockpile-content"><p class="text-dim small p-2">Loading...</p></div>
+          <div id="eco-factories-content"></div>
+        </div>
+
+        <!-- Active Resource Trades -->
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-title">Resource Trades</span>
+            <span class="small text-dim" style="font-size:10px">Set up via Nations panel</span>
+          </div>
+          <div id="active-trades-content"><p class="text-dim small p-2">No active trades.</p></div>
+        </div>
+      </div>
+
+      <div id="news-tab" class="tab-content">
+        <div class="panel-header" style="padding:8px 12px">
+          <span class="panel-title">World News</span>
+        </div>
+        <div id="news-content"></div>
+      </div>
+    </div>
+
+    <!-- NEWS TICKER -->
+    <div id="ticker-bar">
+      <span class="ticker-label"><i data-lucide="newspaper" style="width:11px;height:11px;vertical-align:middle"></i> NEWS</span>
+      <div class="ticker-track">
+        <div id="ticker-inner" class="ticker-inner">Waiting for world events...</div>
+      </div>
+    </div>
+
+    <!-- BOTTOM BAR -->
+    <div id="bottombar">
+      <div class="bottombar-section">
+        <span class="small text-dim">Turn</span>
+        <span id="bb-turn" class="bold text-gold">0</span>
+      </div>
+      <div class="bottombar-divider"></div>
+      <div class="bottombar-section">
+        <span class="small text-dim">Phase</span>
+        <span id="bb-phase" class="bold">issues</span>
+      </div>
+      <div class="bottombar-divider"></div>
+      <div class="bottombar-section small text-dim">
+        Click nations on map or in Nations panel for diplomacy & war
+      </div>
+      <div style="flex:1"></div>
+      <button id="btn-research" class="btn btn-secondary" onclick="window.__debugBanner && window.__debugBanner('Research click'); openTechTree && openTechTree()" style="margin-right:4px">
+        ⚗️ Research
+      </button>
+      <button id="btn-end-turn" class="btn btn-primary" onclick="endTurn()">
+        Real-time
+      </button>
+    </div>
+
+  </div><!-- /#app -->
+</div><!-- /#game-screen -->
+
+<!-- ████ MODALS ████ -->
+
+<!-- Load Game Modal -->
+<div id="load-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">Load Campaign</span>
+      <button class="modal-close" data-close-modal="load-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="saves-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Nation Detail Modal -->
+<div id="nation-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span id="modal-nation-flag" style="font-size:24px">🏳️</span>
+      <span id="modal-nation-title" class="modal-title">Nation</span>
+      <button class="modal-close" data-close-modal="nation-modal">×</button>
+    </div>
+    <div class="modal-body" id="modal-nation-body"></div>
+    <div class="modal-actions" id="modal-nation-actions"></div>
+  </div>
+</div>
+
+<!-- War Declaration Modal -->
+<div id="war-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <span class="modal-title"><i data-lucide="swords" style="width:15px;height:15px;vertical-align:middle;margin-right:6px"></i>Declare War</span>
+      <button class="modal-close" data-close-modal="war-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="war-modal-text" class="text-secondary small mb-2"></p>
+      <div class="form-group">
+        <label class="form-label">Casus Belli</label>
+        <select id="war-casus-belli" class="form-select">
+          <option value="territorial_dispute">Territorial Dispute</option>
+          <option value="retaliation">Retaliation / Self-Defense</option>
+          <option value="ideological_struggle">Ideological Struggle</option>
+          <option value="economic_war">Economic War / Resources</option>
+          <option value="punitive_war">Punitive Expedition</option>
+          <option value="defensive_war">Defensive War</option>
+          <option value="alliance_defense">Alliance Defense</option>
+        </select>
+      </div>
+      <p id="war-democracy-note" class="war-casus-warning hidden"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary btn-sm" data-close-modal="war-modal">Cancel</button>
+      <button id="btn-confirm-war" class="btn btn-danger btn-sm">Declare War</button>
+    </div>
+  </div>
+</div>
+
+<!-- Turn Log Modal -->
+<div id="turn-log-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="loading-spinner" id="turn-log-spinner"></div>
+      <span id="turn-log-title" class="modal-title">Processing Turn...</span>
+    </div>
+    <div class="modal-body">
+      <div id="turn-log-content" class="turn-log-content"></div>
+    </div>
+    <div class="modal-actions">
+      <button id="btn-close-turn-log" class="btn btn-primary hidden" onclick="closeTurnLog()">Close &amp; Continue →</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tech Tree Modal -->
+<div id="tech-modal" class="modal-overlay hidden">
+  <div class="modal tech-modal-wide">
+    <div class="modal-header">
+      <span class="modal-title">⚗️ Technology Research</span>
+      <span id="tech-rp-display" class="small text-gold" style="margin-left:12px"></span>
+      <div id="tech-slots-bar" class="tech-slots-bar"></div>
+      <div style="flex:1"></div>
+      <div class="tech-branch-tabs">
+        <button class="tech-branch-btn active" data-branch="military">Military</button>
+        <button class="tech-branch-btn" data-branch="industry">Industry</button>
+        <button class="tech-branch-btn" data-branch="diplomacy">Diplomacy</button>
+      </div>
+      <button class="modal-close" data-close-modal="tech-modal" style="margin-left:12px">×</button>
+    </div>
+    <div class="modal-body" style="padding:0;overflow:auto">
+      <div id="tech-tree-container"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Peace Terms Modal -->
+<div id="peace-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title"><i data-lucide="scroll-text" style="width:15px;height:15px;vertical-align:middle;margin-right:6px"></i>Peace Negotiations</span>
+      <button class="modal-close" data-close-modal="peace-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="text-dim small mb-2">Choose the terms of peace. Higher warscore allows more punishing terms.</p>
+      <div id="peace-terms-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay" class="loading-overlay hidden">
+  <div class="loading-spinner" style="width:32px;height:32px;border-width:3px"></div>
+  <div class="loading-text">Processing...</div>
+  <button id="loading-cancel-btn" class="btn btn-secondary btn-sm hidden" style="margin-top:16px" onclick="cancelNewGame()">Cancel</button>
+</div>
+
+<!-- Debug Banner -->
+<div id="debug-banner" class="debug-banner hidden"></div>
+
+<!-- Notifications -->
+<div id="notifications"></div>
+
+<script>
+  window.__debugBanner = (msg) => {
+    const el = document.getElementById('debug-banner');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(window.__debugBannerTimer);
+    window.__debugBannerTimer = setTimeout(() => el.classList.add('hidden'), 2500);
+  };
+</script>
+
+<script>
+  // Initialize Lucide icons after DOM is ready
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+  });
+</script>
+
+<!-- Libraries -->
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script src="https://unpkg.com/lucide/dist/umd/lucide.min.js"></script>
+
+<!-- Game scripts -->
+<script src="/static/js/country-data.js"></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/map.js"></script>
+<script src="/static/js/tech-tree.js"></script>
+<script src="/static/js/main.js"></script>
+
+</body>
+</html>

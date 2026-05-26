@@ -1,0 +1,88 @@
+{
+  "eras": [
+    {
+      "id": "1815",
+      "name": "Congress of Vienna (1815)",
+      "year": 1815,
+      "description": "Post-Napoleonic Europe reshapes itself. Great powers compete for influence as nationalism stirs.",
+      "major_nations": ["United Kingdom", "France", "Austria", "Prussia", "Russia", "Ottoman Empire", "Spain", "Sweden"],
+      "world_tension_base": 0.2
+    },
+    {
+      "id": "1871",
+      "name": "Age of Nationalism (1871)",
+      "year": 1871,
+      "description": "Germany unifies, France reels from defeat. Colonial empires expand across Africa and Asia.",
+      "major_nations": ["German Empire", "France", "United Kingdom", "Austria-Hungary", "Russia", "Ottoman Empire", "Italy", "United States", "Japan"],
+      "world_tension_base": 0.25
+    },
+    {
+      "id": "1914",
+      "name": "Eve of the Great War (1914)",
+      "year": 1914,
+      "description": "Tensions boil across Europe. Alliance blocs face off. One spark could ignite the world.",
+      "major_nations": ["German Empire", "Austria-Hungary", "Ottoman Empire", "France", "United Kingdom", "Russia", "Italy", "United States", "Japan", "Serbia"],
+      "world_tension_base": 0.65
+    },
+    {
+      "id": "1936",
+      "name": "The Road to War (1936)",
+      "year": 1936,
+      "description": "Fascism rises. The League of Nations crumbles. Democracy fights for survival against radical ideologies.",
+      "major_nations": ["Germany", "Italy", "Japan", "Soviet Union", "France", "United Kingdom", "United States", "Spain", "China", "Poland"],
+      "world_tension_base": 0.45
+    },
+    {
+      "id": "1945",
+      "name": "Dawn of the Cold War (1945)",
+      "year": 1945,
+      "description": "WWII ends. Two superpowers emerge. Europe lies in ruins and a new ideological struggle begins.",
+      "major_nations": ["United States", "Soviet Union", "United Kingdom", "France", "China", "Poland", "Germany", "Japan", "India"],
+      "world_tension_base": 0.35
+    },
+    {
+      "id": "1962",
+      "name": "Cold War Peak (1962)",
+      "year": 1962,
+      "description": "Nuclear standoff. Proxy wars rage. Decolonization reshapes the Third World. Space race accelerates.",
+      "major_nations": ["United States", "Soviet Union", "China", "United Kingdom", "France", "Cuba", "West Germany", "East Germany", "India", "Egypt"],
+      "world_tension_base": 0.55
+    },
+    {
+      "id": "1991",
+      "name": "The New World Order (1991)",
+      "year": 1991,
+      "description": "The Soviet Union collapses. America stands alone. Nationalism resurges across Eastern Europe and Central Asia.",
+      "major_nations": ["United States", "Russia", "China", "United Kingdom", "France", "Germany", "Japan", "India", "Brazil", "Ukraine"],
+      "world_tension_base": 0.2
+    },
+    {
+      "id": "2024",
+      "name": "Modern World (2024)",
+      "year": 2024,
+      "description": "Multipolar world. AI transforms society. Climate crisis looms. Great power competition returns.",
+      "major_nations": ["United States", "China", "Russia", "United Kingdom", "France", "Germany", "India", "Japan", "Brazil", "Turkey"],
+      "world_tension_base": 0.4
+    },
+    {
+      "id": "2050",
+      "name": "Near Future (2050)",
+      "year": 2050,
+      "description": "Climate change reshapes borders. AI dominates economies. New superpowers emerge from the rubble of old orders.",
+      "major_nations": ["United States", "China", "India", "European Federation", "African Union", "Brazil", "Russia", "Indonesia", "Nigeria"],
+      "world_tension_base": 0.5
+    }
+  ],
+  "ideologies": {
+    "Liberal Democracy": {"color": "#3b82f6", "aggression_modifier": -0.3, "trade_modifier": 0.2, "civil_liberties": 0.9},
+    "Social Democracy": {"color": "#22c55e", "aggression_modifier": -0.2, "trade_modifier": 0.1, "civil_liberties": 0.85},
+    "Conservative Democracy": {"color": "#f59e0b", "aggression_modifier": -0.1, "trade_modifier": 0.15, "civil_liberties": 0.75},
+    "Socialism": {"color": "#ef4444", "aggression_modifier": 0.0, "trade_modifier": -0.1, "civil_liberties": 0.6},
+    "Communism": {"color": "#dc2626", "aggression_modifier": 0.1, "trade_modifier": -0.2, "civil_liberties": 0.3},
+    "Fascism": {"color": "#1c1917", "aggression_modifier": 0.4, "trade_modifier": -0.1, "civil_liberties": 0.1},
+    "Monarchy": {"color": "#7c3aed", "aggression_modifier": 0.1, "trade_modifier": 0.0, "civil_liberties": 0.5},
+    "Theocracy": {"color": "#059669", "aggression_modifier": 0.15, "trade_modifier": -0.05, "civil_liberties": 0.35},
+    "Technocracy": {"color": "#0ea5e9", "aggression_modifier": -0.1, "trade_modifier": 0.25, "civil_liberties": 0.65},
+    "Oligarchy": {"color": "#78716c", "aggression_modifier": 0.05, "trade_modifier": 0.1, "civil_liberties": 0.4}
+  }
+}
