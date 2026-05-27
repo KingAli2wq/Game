@@ -97,6 +97,12 @@ const API = {
   setConscription: (gameId, law_id) =>
     API.post(`/api/game/${gameId}/military/conscription`, { law_id }),
   getWarFronts: (gameId) => API.get(`/api/game/${gameId}/military/war-fronts`),
+
+  // Speed control
+  setSpeed: (gameId, speed) => API.post(`/api/game/${gameId}/speed`, { speed }),
+
+  // Espionage
+  launchSpyMission: (gameId, body) => API.post(`/api/game/${gameId}/espionage/launch`, body),
 };
 
 window.API = API;

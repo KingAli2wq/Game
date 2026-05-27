@@ -11,15 +11,86 @@ const MapModule = (() => {
   // COUNTRY_DATA.nameToISO  : lowercase name -> ISO numeric
   // COUNTRY_DATA.nameToAlpha2: lowercase name -> alpha-2
 
+  // Custom flag overrides: nation name (lowercase) -> SVG data URI
+  // Used for historical nations that no longer exist or whose modern flag is wrong
+  const CUSTOM_FLAG_OVERRIDES = {
+    'soviet union': _ussrFlagSvg(),
+    'ussr': _ussrFlagSvg(),
+    'u.s.s.r.': _ussrFlagSvg(),
+    'russian empire': _russianEmpireFlagSvg(),
+    'nazi germany': _naziGermanyFlagSvg(),
+    'german reich': _naziGermanyFlagSvg(),
+    'third reich': _naziGermanyFlagSvg(),
+    'fascist italy': _fascistItalyFlagSvg(),
+    'italian empire': _fascistItalyFlagSvg(),
+    'ottoman empire': _ottomanFlagSvg(),
+  };
+
+  function _ussrFlagSvg() {
+    // Red field with gold hammer & sickle + red star — CSS SVG data URI
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450">
+      <rect width="900" height="450" fill="#cc0000"/>
+      <text x="110" y="270" font-size="220" font-family="serif" fill="#FFD700" text-anchor="middle">☭</text>
+      <polygon points="195,30 210,75 255,75 220,100 235,145 195,120 155,145 170,100 135,75 180,75" fill="#FFD700"/>
+    </svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function _russianEmpireFlagSvg() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450">
+      <rect width="900" height="150" fill="#fff"/>
+      <rect y="150" width="900" height="150" fill="#003087"/>
+      <rect y="300" width="900" height="150" fill="#cc0000"/>
+    </svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function _naziGermanyFlagSvg() {
+    // Black-white-red tricolor with swastika approximated by cross
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450">
+      <rect width="900" height="150" fill="#000"/>
+      <rect y="150" width="900" height="150" fill="#fff"/>
+      <rect y="300" width="900" height="150" fill="#cc0000"/>
+      <circle cx="450" cy="225" r="90" fill="#cc0000"/>
+      <text x="450" y="270" font-size="130" font-family="sans-serif" fill="#000" text-anchor="middle" font-weight="bold">✚</text>
+    </svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function _fascistItalyFlagSvg() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450">
+      <rect width="300" height="450" fill="#009246"/>
+      <rect x="300" width="300" height="450" fill="#fff"/>
+      <rect x="600" width="300" height="450" fill="#ce2b37"/>
+      <circle cx="450" cy="225" r="70" fill="#000"/>
+      <text x="450" y="250" font-size="80" font-family="sans-serif" fill="#fff" text-anchor="middle">ℱ</text>
+    </svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
+  function _ottomanFlagSvg() {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 450">
+      <rect width="900" height="450" fill="#cc0000"/>
+      <text x="300" y="300" font-size="220" fill="#fff" font-family="sans-serif">☽</text>
+      <polygon points="430,80 440,120 480,120 450,145 465,185 430,162 395,185 410,145 380,120 420,120" fill="#fff"/>
+    </svg>`;
+    return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  }
+
   function getAlpha2(nationName) {
     if (!nationName) return null;
     return (COUNTRY_DATA.nameToAlpha2 || {})[nationName.toLowerCase()] || null;
   }
 
   function flagUrl(nationName) {
+    if (!nationName) return null;
+    const key = nationName.toLowerCase();
+    if (CUSTOM_FLAG_OVERRIDES[key]) return CUSTOM_FLAG_OVERRIDES[key];
     const a2 = getAlpha2(nationName);
     return a2 ? `https://flagcdn.com/w40/${a2}.png` : null;
   }
+
+  function getCustomFlagOverrides() { return CUSTOM_FLAG_OVERRIDES; }
 
   function init(containerId, clickCallback) {
     onCountryClick = clickCallback;
@@ -380,7 +451,7 @@ const MapModule = (() => {
     _readyCallbacks.length = 0;
   }
 
-  return { init, updateColors, highlightNation, resize, flagUrl, getAlpha2, getInternals, onReady };
+  return { init, updateColors, highlightNation, resize, flagUrl, getAlpha2, getInternals, onReady, getCustomFlagOverrides };
 })();
 
 window.MapModule = MapModule;

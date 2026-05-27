@@ -489,26 +489,45 @@ async def process_ai_turns(state: GameState, broadcast_fn=None) -> tuple[GameSta
                     target_id = find_nation_id(state, target_name)
                     aggression_mod = IDEOLOGY_AGGRESSION.get(nation.ideology, 0)
                     threshold = 0.6 - aggression_mod
+                    # Fascist/ultranationalist nations escalate more easily as tension rises
+                    tension_bonus = 0
+                    if state.world_tension > 0.6 and nation.ideology in ("Fascism", "Communism"):
+                        tension_bonus = 0.1
+                    if state.world_tension > 0.8:
+                        tension_bonus += 0.15
+                    min_tension = max(0.20, 0.40 - aggression_mod - tension_bonus)
                     if (target_id and target_id != nation_id and
-                            nation.personality.aggression > threshold and
+                            nation.personality.aggression > (threshold - tension_bonus) and
                             target_id != state.player_nation_id and
-                            not nation.is_at_war and state.world_tension > 0.35):
-                        target = state.nations[target_id]
-                        if not target.is_at_war:
+                            not nation.is_at_war and state.world_tension > min_tension):
+                        target = state.nations.get(target_id)
+                        if target and not target.is_at_war:
+                            # Pick ideology-appropriate casus belli
+                            if nation.ideology == "Fascism":
+                                cb = random.choice(["territorial_dispute", "ideological_struggle", "punitive_war"])
+                            elif nation.ideology == "Communism":
+                                cb = random.choice(["ideological_struggle", "defensive_war"])
+                            else:
+                                cb = "territorial_dispute"
                             war = War(
                                 attacker=nation_id,
                                 defender=target_id,
                                 start_turn=state.turn,
-                                casus_belli="territorial_dispute"
+                                casus_belli=cb
                             )
+                            # Auto-join defense pacts
+                            for ally_id in target.diplomacy.defense_pacts:
+                                if ally_id in state.nations and ally_id != nation_id:
+                                    war.defender_allies.append(ally_id)
+                                    state.nations[ally_id].is_at_war = True
                             state.active_wars.append(war)
                             nation.is_at_war = True
                             target.is_at_war = True
                             state.nations[target_id] = target
-                            state.world_tension = min(1.0, state.world_tension + 0.05)
+                            state.world_tension = min(1.0, state.world_tension + 0.07)
                             log_msg = f"⚔ {nation.name} has declared war on {target.name}!"
                             logs.append(log_msg)
-                            state.add_news(f"WAR: {nation.name} Invades {target.name}", nation_id, "war")
+                            state.add_news(f"WAR DECLARED: {nation.name} Invades {target.name}", nation_id, "war")
                             if broadcast_fn:
                                 await broadcast_fn({"type": "turn_action", "message": log_msg, "action_type": "war"})
 
@@ -533,6 +552,69 @@ async def process_ai_turns(state: GameState, broadcast_fn=None) -> tuple[GameSta
             state.nations[nation_id] = nation
         except Exception as e:
             logs.append(f"AI error for {nation.name}: {str(e)[:50]}")
+
+    return state, logs
+
+
+def _autonomous_ai_escalation(state: GameState) -> tuple[GameState, list[str]]:
+    """Rule-based geopolitical escalation — runs independently of AI calls each turn."""
+    logs = []
+    if state.world_tension < 0.35:
+        return state, logs
+
+    for nid, nation in list(state.nations.items()):
+        if not nation.is_alive or nation.is_at_war or nid == state.player_nation_id:
+            continue
+
+        aggression_mod = IDEOLOGY_AGGRESSION.get(nation.ideology, 0)
+        effective_aggression = nation.personality.aggression + aggression_mod
+
+        # Issue ultimatums / break alliances with rivals at high tension
+        if state.world_tension > 0.7 and effective_aggression > 0.65:
+            for rival_id, rel in list(nation.diplomacy.relations.items()):
+                if rel < -50 and rival_id in nation.diplomacy.alliances:
+                    nation.diplomacy.alliances.remove(rival_id)
+                    rival = state.nations.get(rival_id)
+                    if rival and nid in rival.diplomacy.alliances:
+                        rival.diplomacy.alliances.remove(nid)
+                        state.nations[rival_id] = rival
+                    log = f"{nation.name} breaks alliance with {state.nations[rival_id].name if rival_id in state.nations else rival_id}"
+                    logs.append(log)
+                    state.add_news(f"{nation.name} Dissolves Alliance Amid Rising Tensions", nid, "diplomacy")
+                    break
+
+        # Autonomous war declaration for very aggressive/fascist nations at very high tension
+        if (state.world_tension > 0.65 and effective_aggression > 0.80 and
+                nation.ideology in ("Fascism", "Communism", "Monarchy") and
+                random.random() < 0.04):  # 4% chance per turn
+            # Find a rival to attack (worst relations, not player)
+            best_target_id = None
+            worst_rel = 999
+            for other_id, other in state.nations.items():
+                if other_id == nid or other_id == state.player_nation_id:
+                    continue
+                if other.is_at_war or not other.is_alive:
+                    continue
+                rel = nation.diplomacy.relations.get(other_id, 0)
+                if rel < worst_rel and rel < -20:
+                    worst_rel = rel
+                    best_target_id = other_id
+            if best_target_id:
+                target = state.nations[best_target_id]
+                cb = "ideological_struggle" if nation.ideology == "Fascism" else "territorial_dispute"
+                new_war = War(attacker=nid, defender=best_target_id, start_turn=state.turn, casus_belli=cb)
+                state.active_wars.append(new_war)
+                nation.is_at_war = True
+                target.is_at_war = True
+                state.nations[best_target_id] = target
+                state.world_tension = min(1.0, state.world_tension + 0.06)
+                log = f"⚔ {nation.name} launches aggressive war against {target.name}!"
+                logs.append(log)
+                state.add_news(f"CRISIS: {nation.name} Launches Unprovoked War on {target.name}", nid, "war")
+                if broadcast_fn := None:  # no broadcast in sync context
+                    pass
+
+        state.nations[nid] = nation
 
     return state, logs
 
@@ -1044,6 +1126,13 @@ async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameSt
     state, ai_logs = await process_ai_turns(state, broadcast_fn=broadcast_fn)
     logs.extend(ai_logs)
 
+    # 4b. Autonomous rule-based geopolitical escalation (independent of AI)
+    state, escalation_logs = _autonomous_ai_escalation(state)
+    for el in escalation_logs:
+        logs.append(el)
+        if broadcast_fn:
+            await broadcast_fn({"type": "turn_action", "message": el, "action_type": "diplomacy"})
+
     # 5. Policy-based NPC reactions
     state, policy_logs = _apply_policy_reactions(state)
     for pl in policy_logs:
@@ -1058,9 +1147,43 @@ async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameSt
         if broadcast_fn:
             await broadcast_fn({"type": "turn_action", "message": rl, "action_type": "diplomacy"})
 
+    # 6b. Rebellion check — low stability grows rebel strength
+    for nid, nation in list(state.nations.items()):
+        if not nation.is_alive:
+            continue
+        if nation.stability < 0.25:
+            grow = (0.25 - nation.stability) * 0.08 + (0.1 if nation.is_at_war else 0)
+            nation.rebel_strength = min(1.0, getattr(nation, "rebel_strength", 0.0) + grow)
+        elif nation.stability > 0.45:
+            nation.rebel_strength = max(0.0, getattr(nation, "rebel_strength", 0.0) - 0.03)
+
+        if getattr(nation, "rebel_strength", 0.0) >= 0.7 and not getattr(nation, "has_rebellion", False):
+            nation.has_rebellion = True
+            nation.stability = max(0.05, nation.stability - 0.1)
+            nation.war_support = max(0.0, nation.war_support - 0.15)
+            state.add_news(f"REBELLION: Armed rebel factions seize territory in {nation.name}!", nid, "politics")
+            if broadcast_fn:
+                await broadcast_fn({"type": "rebellion_alert", "nation_id": nid, "nation_name": nation.name,
+                                    "rebel_strength": nation.rebel_strength})
+        # Rebellion suppression over time if stability improves
+        if getattr(nation, "has_rebellion", False) and nation.stability > 0.55:
+            nation.has_rebellion = False
+            nation.rebel_strength = max(0.0, nation.rebel_strength - 0.3)
+            state.add_news(f"{nation.name} restores order — rebellion suppressed.", nid, "politics")
+        state.nations[nid] = nation
+
+    # 6c. Espionage point accumulation for player
+    player = state.get_player_nation()
+    if player:
+        player.espionage_points = min(200.0, getattr(player, "espionage_points", 0.0) + 1.5 + player.stability * 2)
+        state.nations[state.player_nation_id] = player
+
     # 7. Pull issues from the pre-written library — zero AI calls needed.
     player = state.get_player_nation()
-    if player and len([i for i in state.pending_issues if not i.resolved]) < MAX_PENDING_ISSUES:
+    # Issue frequency: only generate when countdown reaches 0 (≈4-5 min at 120s/turn)
+    if state.turns_until_next_issue > 0:
+        state.turns_until_next_issue -= 1
+    if player and state.turns_until_next_issue == 0 and len([i for i in state.pending_issues if not i.resolved]) < MAX_PENDING_ISSUES:
         from backend.issues_library import get_issues_for_context, format_issue_for_game, generate_auto_issue
 
         # Track which library issues have already been used this game
@@ -1136,6 +1259,9 @@ async def process_full_turn(state: GameState, broadcast_fn=None) -> tuple[GameSt
             logs.append(log_msg)
             if broadcast_fn:
                 await broadcast_fn({"type": "turn_action", "message": log_msg, "action_type": "politics"})
+
+        # Reset issue timer: 2-3 turns = ~4-6 minutes at default speed
+        state.turns_until_next_issue = random.randint(2, 3)
 
     state.turn_log = logs
     state.phase = "issues"

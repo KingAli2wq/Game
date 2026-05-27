@@ -6,6 +6,7 @@ let ws = null;
 let selectedNationId = null;
 let pendingWarNationId = null;
 let aiOnline = false;
+let currentSpeed = 1;  // 0=pause, 1=normal, 2=fast, 3=turbo
 
 // Flag helpers — backed by the comprehensive COUNTRY_DATA from country-data.js
 const FLAG_IDEOLOGY_COLORS = {
@@ -81,6 +82,9 @@ async function initApp() {
   });
 
   document.getElementById('btn-end-turn')?.addEventListener('click', endTurn);
+
+  // Speed controls — set initial active state, handlers use global setSpeed()
+  _syncSpeedButtons(currentSpeed);
 
   // War modal casus belli watcher
   document.getElementById('war-casus-belli')?.addEventListener('change', updateWarModalNote);
@@ -346,6 +350,10 @@ async function loadGame(id) {
       MapModule.updateColors(gameState);
     });
     renderAll();
+    // Start at 1x speed by default on load
+    currentSpeed = 1;
+    _syncSpeedButtons(1);
+    API.setSpeed(gameId, 1).catch(() => {});
   } catch (e) {
     UI.notify(`Load failed: ${e.message}`, 'error');
     UI.showScreen('menu-screen');
@@ -402,6 +410,10 @@ function connectWebSocket() {
         renderAll();
         updateTicker();
       }
+    } else if (msg.type === 'rebellion_alert') {
+      const nationName = msg.nation_name || 'Unknown Nation';
+      const rebelStrength = msg.rebel_strength ?? 0;
+      showRebellionModal(nationName, rebelStrength);
     }
   };
 
@@ -466,6 +478,7 @@ function renderAll() {
   renderLeftPanel();
   renderRightPanel();
   renderBottomBar();
+  renderIntelPanel();
   MapModule.updateColors(gameState);
   if (selectedNationId) renderNationDetail(selectedNationId);
 }
@@ -481,19 +494,55 @@ function renderTopBar() {
   const player = gameState.nations[gameState.player_nation_id];
   if (!player) return;
 
+  // Flag — use MapModule.flagUrl if available for custom SVG overrides, else fallback
   const flagEl = document.getElementById('tb-flag');
-  if (flagEl) flagEl.innerHTML = getFlagImg(player.name, 'flag-img');
+  if (flagEl) {
+    let flagHtml = '';
+    if (window.MapModule?.flagUrl) {
+      const url = MapModule.flagUrl(player.name);
+      if (url) {
+        flagHtml = `<img src="${url}" alt="" style="width:28px;height:19px;object-fit:cover;border-radius:2px;border:1px solid rgba(255,255,255,0.2)" onerror="this.style.display='none'">`;
+      }
+    }
+    if (!flagHtml) flagHtml = getFlagImg(player.name, 'flag-img', player.ideology);
+    flagEl.innerHTML = flagHtml;
+  }
 
   setText('tb-nation-name', player.name);
+
+  // Ideology tag
+  const ideologyTag = document.getElementById('tb-ideology-tag');
+  if (ideologyTag) {
+    ideologyTag.textContent = player.ideology || '—';
+    ideologyTag.style.color = UI.ideologyColor(player.ideology);
+  }
+
   setText('tb-date', `${UI.monthName(gameState.month)} ${gameState.year}`);
   setText('tb-gdp', UI.fmtGDP(player.economy.gdp));
   setText('tb-stability', UI.fmtPct(player.stability));
   setText('tb-prestige', Math.round(player.prestige));
   setText('tb-army', UI.fmtArmy(player.military.army_size));
 
+  // Mini progress bars
+  const stabBar = document.getElementById('tb-stability-bar');
+  if (stabBar) stabBar.style.width = Math.round(player.stability * 100) + '%';
+  const warBar = document.getElementById('tb-warsupport-bar');
+  if (warBar) warBar.style.width = Math.round(player.war_support * 100) + '%';
+
+  // War support value if element exists
+  setText('tb-warsupport', UI.fmtPct(player.war_support));
+
   const tensionFill = document.getElementById('tension-fill');
   if (tensionFill) tensionFill.style.width = (gameState.world_tension * 100) + '%';
   setText('tension-val', (gameState.world_tension * 100).toFixed(0) + '%');
+
+  // Issues badge
+  const badge = document.getElementById('issues-badge');
+  if (badge) {
+    const count = (gameState.pending_issues || []).filter(i => !i.resolved).length;
+    badge.textContent = count;
+    badge.classList.toggle('hidden', count === 0);
+  }
 }
 
 function renderNationPanel() {
@@ -1648,6 +1697,189 @@ async function doUpgradeAlliance(nid, targetTier) {
   }
 }
 window.doUpgradeAlliance = doUpgradeAlliance;
+
+// ── Speed Controls ────────────────────────────────────────────────────
+
+function _syncSpeedButtons(speed) {
+  [0, 1, 2, 3].forEach(s => {
+    const btn = document.getElementById(`speed-btn-${s === 0 ? 'pause' : s + 'x'}`);
+    if (btn) btn.classList.toggle('active', s === speed);
+  });
+  // Animate clock sweep for running speeds
+  const fill = document.getElementById('speed-clock-fill');
+  if (fill) {
+    fill.style.animationDuration = speed === 0 ? '0s' : speed === 1 ? '4s' : speed === 2 ? '2s' : '1s';
+    fill.style.animationPlayState = speed === 0 ? 'paused' : 'running';
+  }
+}
+
+async function setSpeed(speed) {
+  if (!gameId) return;
+  currentSpeed = speed;
+  _syncSpeedButtons(speed);
+  try {
+    await API.setSpeed(gameId, speed);
+  } catch (e) {
+    UI.notify(`Speed change failed: ${e.message}`, 'error');
+  }
+}
+window.setSpeed = setSpeed;
+
+// ── Rebellion Modal ───────────────────────────────────────────────────
+
+function showRebellionModal(nationName, rebelStrength) {
+  const content = document.getElementById('rebellion-modal-content');
+  if (content) {
+    const pct = Math.round(rebelStrength * 100);
+    content.innerHTML = `
+      <p class="rebellion-alert-body">
+        Rebel factions in <strong>${nationName}</strong> have grown strong enough to openly
+        challenge the state. Stability has collapsed and armed insurrection is spreading.
+      </p>
+      <div class="rebellion-stats">
+        <div class="stat-row">
+          <span class="stat-name">Rebel Strength</span>
+          <span class="stat-value text-red bold">${pct}%</span>
+        </div>
+        <div class="stat-bar">
+          <div class="stat-fill fill-red" style="width:${pct}%"></div>
+        </div>
+      </div>
+      <p class="small text-dim" style="margin-top:10px">
+        Boost stability through social spending, martial law policies, or targeted reforms.
+        If rebel strength reaches 100%, a civil war will begin.
+      </p>`;
+  }
+  document.getElementById('rebellion-modal')?.classList.remove('hidden');
+}
+window.showRebellionModal = showRebellionModal;
+
+function closeModal(id) {
+  document.getElementById(id)?.classList.add('hidden');
+}
+window.closeModal = closeModal;
+
+// ── Intel Panel ───────────────────────────────────────────────────────
+
+const INTEL_MISSIONS = [
+  {
+    id: 'steal_blueprints',
+    name: 'Steal Blueprints',
+    icon: '📐',
+    desc: 'Acquire enemy research data, boosting your own research points.',
+    cost: 40,
+    risk: 'med',
+    effect: '+25 Research Points',
+  },
+  {
+    id: 'sabotage_industry',
+    name: 'Sabotage Industry',
+    icon: '💣',
+    desc: 'Destroy enemy factories, reducing their industrial output.',
+    cost: 60,
+    risk: 'high',
+    effect: '-15% Enemy Industry',
+  },
+  {
+    id: 'assassinate_leader',
+    name: 'Assassinate Leader',
+    icon: '🗡',
+    desc: 'Eliminate the target nation\'s leader, causing a political crisis.',
+    cost: 80,
+    risk: 'high',
+    effect: 'Enemy Stability -0.20',
+  },
+  {
+    id: 'propaganda_campaign',
+    name: 'Propaganda Campaign',
+    icon: '📢',
+    desc: 'Spread propaganda to weaken enemy morale and support.',
+    cost: 30,
+    risk: 'low',
+    effect: 'Enemy War Support -0.10',
+  },
+  {
+    id: 'counter_intel',
+    name: 'Counter-Intelligence',
+    icon: '🔒',
+    desc: 'Harden your own agencies against enemy espionage.',
+    cost: 20,
+    risk: 'low',
+    effect: 'Your Intel Defense +25%',
+  },
+];
+
+function renderIntelPanel() {
+  if (!gameState) return;
+  const player = gameState.nations[gameState.player_nation_id];
+  if (!player) return;
+
+  const pts = player.espionage_points ?? 0;
+  const maxPts = 200;
+  const pct = Math.min(100, Math.round((pts / maxPts) * 100));
+
+  const fillEl = document.getElementById('intel-points-fill');
+  const valEl = document.getElementById('intel-points-val');
+  if (fillEl) fillEl.style.width = pct + '%';
+  if (valEl) valEl.textContent = `${Math.round(pts)} / ${maxPts}`;
+
+  const listEl = document.getElementById('intel-missions-list');
+  if (listEl) {
+    listEl.innerHTML = INTEL_MISSIONS.map(m => {
+      const canAfford = pts >= m.cost;
+      return `
+        <div class="intel-mission-card ${canAfford ? '' : 'policy-disabled'}">
+          <div class="intel-mission-icon">${m.icon}</div>
+          <div style="flex:1;min-width:0">
+            <div class="intel-mission-name">${m.name}</div>
+            <div class="small text-dim" style="margin:2px 0">${m.desc}</div>
+            <div class="small text-green">${m.effect}</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+            <span class="intel-risk-tag risk-${m.risk}">${m.risk.toUpperCase()}</span>
+            <span class="small text-gold">${m.cost} pts</span>
+            <button class="btn btn-secondary btn-xs" ${canAfford ? '' : 'disabled'}
+              onclick="launchIntelMission('${m.id}', ${m.cost})">Launch</button>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  const activeOpsEl = document.getElementById('intel-active-ops');
+  if (activeOpsEl) {
+    const ops = gameState.active_spy_missions || [];
+    if (ops.length === 0) {
+      activeOpsEl.innerHTML = '<p class="text-dim small p-2">No active operations.</p>';
+    } else {
+      activeOpsEl.innerHTML = ops.map(op => `
+        <div class="intel-op-card">
+          <span class="intel-mission-icon small">${op.icon || '🕵'}</span>
+          <div style="flex:1">
+            <div class="small bold">${op.mission_id?.replace(/_/g, ' ')}</div>
+            <div class="small text-dim">${op.target || 'Unknown target'} · ${op.turns_remaining ?? '?'} turns remaining</div>
+          </div>
+        </div>`).join('');
+    }
+  }
+}
+
+async function launchIntelMission(missionId, cost) {
+  // Select target from a simple prompt for now
+  const targetName = prompt('Enter target nation name for this operation:');
+  if (!targetName) return;
+  UI.showLoading('Launching operation...');
+  try {
+    const result = await API.launchSpyMission(gameId, { mission_id: missionId, target_nation: targetName });
+    gameState = await API.getState(gameId);
+    renderIntelPanel();
+    UI.notify(result.message || 'Operation launched!', 'success', 6000);
+  } catch (e) {
+    UI.notify(`Mission failed: ${e.message}`, 'error');
+  } finally {
+    UI.hideLoading();
+  }
+}
+window.launchIntelMission = launchIntelMission;
 
 function renderBottomBar() {
   setText('bb-turn', `Turn ${gameState.turn}`);

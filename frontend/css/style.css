@@ -1770,6 +1770,602 @@ input[type=range]::-webkit-slider-thumb {
 .btn-primary.btn-xs { background: #1d4ed8; border-color: #3b82f6; color: #fff; }
 .btn-primary.btn-xs:hover { background: #2563eb; }
 .btn-danger.btn-xs  { background: rgba(185,28,28,0.25); border-color: #ef4444; color: #fca5a5; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   NEW UI ADDITIONS — Speed Controls, Topbar, Intel, Rebellion, Front Lines
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Topbar overhaul ─────────────────────────────────────────────────────── */
+.topbar-nation-block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tb-flag-wrap {
+  display: flex;
+  align-items: center;
+  width: 32px;
+  height: 22px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.tb-flag-wrap img,
+.tb-flag-wrap svg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.topbar-nation-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.topbar-ideology-tag {
+  font-size: 9px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.topbar-divider-v {
+  width: 1px;
+  height: 32px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.topbar-stats-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.topbar-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 56px;
+}
+
+.topbar-mini-bar {
+  width: 48px;
+  height: 3px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 1px;
+}
+
+.topbar-mini-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s;
+}
+
+.fill-stability { background: #38b2ac; }
+.fill-war { background: #ef4444; }
+
+.topbar-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.topbar-date {
+  font-family: 'Cinzel', serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 2px;
+}
+
+.tension-val {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  min-width: 32px;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.topbar-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+  gap: 4px;
+}
+
+/* ── Speed Controls ───────────────────────────────────────────────────────── */
+.speed-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+}
+
+.speed-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  margin-right: 2px;
+}
+
+.speed-btn {
+  width: 32px;
+  height: 26px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Rajdhani', sans-serif;
+}
+
+.speed-btn:hover {
+  border-color: var(--gold-dim);
+  color: var(--text-primary);
+}
+
+.speed-btn.active {
+  background: rgba(201,168,76,0.15);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+
+.speed-clock-indicator {
+  width: 36px;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-left: 4px;
+  cursor: default;
+}
+
+.speed-clock-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+  border-radius: 3px;
+  transition: width 0.5s linear;
+  width: 0%;
+}
+
+/* ── Bottom bar action buttons ───────────────────────────────────────────── */
+.bottombar-action-btn {
+  padding: 4px 12px;
+  font-size: 11px;
+  gap: 5px;
+  height: 30px;
+}
+
+/* ── Setup screen improvements ───────────────────────────────────────────── */
+.setup-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+  margin: -8px 0;
+}
+
+.era-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-style: italic;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+/* ── Menu improvements ───────────────────────────────────────────────────── */
+.menu-bg-overlay {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 50% at 50% 40%, rgba(29,78,216,0.10) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 30% at 20% 80%, rgba(201,168,76,0.06) 0%, transparent 60%),
+    radial-gradient(ellipse 50% 40% at 80% 20%, rgba(201,168,76,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+
+.menu-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+}
+
+.menu-emblem {
+  filter: drop-shadow(0 0 20px rgba(201,168,76,0.3));
+}
+
+.menu-ai-status {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+.menu-btn {
+  letter-spacing: 2px;
+}
+
+.menu-tagline {
+  font-size: 11px;
+  color: var(--text-dim);
+  letter-spacing: 1px;
+}
+
+/* ── Intelligence / Espionage Panel ──────────────────────────────────────── */
+.intel-points-bar {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 4px;
+}
+
+.intel-missions-title {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-dim);
+  padding: 0 2px;
+}
+
+.intel-mission-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transition: border-color 0.2s;
+}
+
+.intel-mission-card:hover { border-color: var(--border-bright); }
+
+.intel-mission-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.intel-mission-icon {
+  font-size: 18px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.04);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.intel-mission-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.intel-mission-cost {
+  font-size: 10px;
+  color: var(--gold-dim);
+}
+
+.intel-mission-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.intel-mission-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.intel-risk-tag {
+  font-size: 9px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 700;
+}
+
+.intel-risk-low { background: rgba(56,161,105,0.15); color: var(--green); }
+.intel-risk-med { background: rgba(237,137,54,0.15); color: var(--orange); }
+.intel-risk-high { background: rgba(229,62,62,0.15); color: var(--red); }
+
+.intel-op-card {
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold-dim);
+  border-radius: 4px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  font-size: 11px;
+}
+
+.intel-op-target { color: var(--gold); font-weight: 600; }
+.intel-op-status { color: var(--text-dim); font-size: 10px; margin-top: 2px; }
+
+/* ── Issue badge on tab ──────────────────────────────────────────────────── */
+.tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  background: var(--red);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  margin-left: 4px;
+  vertical-align: top;
+}
+
+.tab-badge.hidden { display: none; }
+
+/* ── Rebellion Alert Modal ───────────────────────────────────────────────── */
+.rebellion-alert-body {
+  padding: 4px 0;
+}
+
+.rebellion-nation-name {
+  font-family: 'Cinzel', serif;
+  font-size: 16px;
+  color: #ef4444;
+  margin-bottom: 8px;
+}
+
+.rebellion-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  background: rgba(239,68,68,0.06);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.rebellion-stat-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.rebellion-advice {
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ── Front line pulse animation ──────────────────────────────────────────── */
+@keyframes front-pulse {
+  0%, 100% { stroke-opacity: 0.7; stroke-width: 2.5px; }
+  50%       { stroke-opacity: 0.3; stroke-width: 1.5px; }
+}
+
+@keyframes attack-pulse-anim {
+  0%, 100% { r: 2.5; opacity: 1; }
+  50%       { r: 4; opacity: 0.5; }
+}
+
+.attack-pulse { animation: attack-pulse-anim 1s ease-in-out infinite; }
+
+/* War march animation for arrow lines */
+@keyframes war-march {
+  from { stroke-dashoffset: 30; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* ── Modal flag wrap ─────────────────────────────────────────────────────── */
+.modal-flag-wrap {
+  display: flex;
+  align-items: center;
+  height: 24px;
+  margin-right: 4px;
+}
+
+.modal-flag-wrap img {
+  height: 22px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+}
+
+/* ── Topbar nation stat border separator ─────────────────────────────────── */
+.topbar-stat + .topbar-stat {
+  border-left: 1px solid var(--border);
+  padding-left: 16px;
+}
+
+/* ── Nations tab rejection reason pill ───────────────────────────────────── */
+.rejection-reason {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  padding: 2px 7px;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.25);
+  border-radius: 10px;
+  color: #fca5a5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* ── Stability/War Support mini-bar in panel ─────────────────────────────── */
+.hud-meters {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.hud-meter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hud-meter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.hud-meter-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; }
+.hud-meter-val { font-size: 11px; font-weight: 700; }
+
+.hud-bar {
+  height: 5px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.hud-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s;
+}
+
+/* ── Rebellion flag in nation panel ─────────────────────────────────────── */
+.rebellion-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 5px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #ef4444;
+  font-weight: 600;
+  margin-top: 6px;
+  animation: rebellion-blink 2s ease-in-out infinite;
+}
+
+@keyframes rebellion-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; }
+}
+
+/* ── Speed clock animation ───────────────────────────────────────────────── */
+@keyframes speed-clock-sweep {
+  from { width: 100%; }
+  to { width: 0%; }
+}
+
+/* ── Improved diplomacy action feedback ──────────────────────────────────── */
+.diplo-result-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diplo-result-box.accepted {
+  border-left: 3px solid var(--green);
+}
+
+.diplo-result-box.rejected {
+  border-left: 3px solid var(--red);
+}
+
+.diplo-result-box.neutral {
+  border-left: 3px solid var(--gold-dim);
+}
+
+/* ── Modal improvements ──────────────────────────────────────────────────── */
+.modal-flag-img {
+  height: 22px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+/* ── News ticker improvement ─────────────────────────────────────────────── */
+#ticker-bar {
+  background: linear-gradient(90deg, #0a0a14 0%, #0d0d1a 50%, #0a0a14 100%);
+  border-top: 1px solid var(--gold-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── War score meter in peace modal ─────────────────────────────────────── */
+.warscore-meter {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.warscore-track {
+  height: 8px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+  margin: 6px 0;
+}
+
+.warscore-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #ef4444, #f97316);
+  transition: width 0.5s;
+}
+
+/* ── Hover tooltips for all stats ────────────────────────────────────────── */
+[title] { cursor: help; }
+
+/* ── Research points display in topbar ───────────────────────────────────── */
+.rp-badge {
+  font-size: 9px;
+  background: rgba(139,92,246,0.2);
+  border: 1px solid rgba(139,92,246,0.4);
+  border-radius: 10px;
+  padding: 1px 7px;
+  color: #a78bfa;
+}
+
 .btn-danger.btn-xs:hover  { background: rgba(185,28,28,0.45); }
 .btn-secondary.btn-xs { background: var(--bg-card); color: var(--text-secondary); }
 
@@ -1994,3 +2590,4 @@ input[type=range]::-webkit-slider-thumb {
   box-shadow: 0 4px 16px rgba(0,0,0,0.5);
   display: none;
 }
+

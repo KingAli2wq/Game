@@ -307,10 +307,10 @@ def diplomatic_response(
 
     thresholds = {
         "improve_relations": -10,
-        "trade_deal": 5,
+        "trade_deal": -5,       # lowered: balanced trades should be accepted at neutral relations
         "defense_pact": 20,
         "form_alliance": 35,
-        "impose_sanctions": 10,
+        "impose_sanctions": -999,   # never used; sanctions are unilateral
         "lift_sanctions": -5,
         "alliance_tier_1": 10,
         "alliance_tier_2": 20,
@@ -325,6 +325,11 @@ def diplomatic_response(
         counteroffer = "We might consider a defense pact first."
     elif not accepted and action_type == "defense_pact":
         counteroffer = "Perhaps a trade agreement would build trust."
+    elif not accepted and action_type == "trade_deal":
+        if base < -20:
+            counteroffer = "Improve our relations before proposing trade agreements."
+        else:
+            counteroffer = "We may be open to trade once tensions ease."
 
     return {
         "accepted": accepted,
@@ -344,15 +349,27 @@ def resource_trade_response(target_nation: dict, player_nation: dict, offer_amou
     if policy_trade_blocked(target_nation, player_nation):
         return {
             "accepted": False,
-            "response_message": f"{target_nation.get('name')} halts trade over policy disagreements.",
-            "counteroffer": None,
+            "response_message": f"{target_nation.get('name')} refuses trade due to fundamental policy disagreements.",
+            "counteroffer": "Align your policies before proposing trade.",
         }
+    # Accept balanced/generous trades unless deeply hostile relations
+    # generosity=1.0 (balanced) should be accepted at neutral relations
     score = rel * 0.5 + (generosity - 1) * 40 + policy_score * 1.5
-    accepted = score > 10
+    accepted = score > -5 and rel > -40
+    reason = ""
+    if not accepted:
+        if rel <= -40:
+            reason = f"Hostile relations make trade impossible. Improve relations first."
+        else:
+            reason = f"The terms are unfavorable. Offer more or improve relations."
     return {
         "accepted": accepted,
-        "response_message": f"{target_nation.get('name')} {'agrees to' if accepted else 'declines'} the resource trade.",
-        "counteroffer": None,
+        "response_message": (
+            f"{target_nation.get('name')} agrees to the resource exchange."
+            if accepted else
+            f"{target_nation.get('name')} declines. {reason}"
+        ),
+        "counteroffer": reason if not accepted else None,
     }
 
 
