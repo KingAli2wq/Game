@@ -130,7 +130,11 @@ async def new_game(request: NewGameRequest):
 
     # Grab starter issues from pool (instant fallbacks, no AI)
     from backend.models import Issue, IssueOption
-    await database.seed_pool_if_empty(ai_engine._FALLBACK_ISSUES)
+    await database.seed_pool_if_empty([
+        {**issue, "issue_type": itype}
+        for itype, issues in ai_engine._ISSUES.items()
+        for issue in issues
+    ])
     for itype in ["economic", "political"]:
         pool_issue = await database.get_pool_issue(issue_type=itype)
         if pool_issue:

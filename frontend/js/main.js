@@ -1459,7 +1459,7 @@ async function renderActiveTrades() {
   const el = document.getElementById('active-trades-content');
   if (!el) return;
   try {
-    const trades = await API.getResourceTrades(gameId);
+    const { trades } = await API.getResourceTrades(gameId);
     if (!trades || trades.length === 0) {
       el.innerHTML = '<p class="text-dim small italic p-2">No active resource trades.</p>';
       return;
@@ -1467,7 +1467,7 @@ async function renderActiveTrades() {
     el.innerHTML = trades.map(t => `
       <div class="trade-item">
         <div class="trade-info">
-          <span class="bold small">${t.partner_name || t.target_nation || 'Unknown'}</span>
+          <span class="bold small">${t.partner_name || t.target_nation || (t.target_id ? (gameState?.nations?.[t.target_id]?.name || t.target_id) : 'Unknown')}</span>
           <span class="small text-dim"> — Send: ${t.offer_amount} ${t.offer_resource} / Get: ${t.request_amount} ${t.request_resource}</span>
           ${t.turns_remaining !== undefined ? `<span class="small text-dim"> (${t.turns_remaining} turns)</span>` : ''}
         </div>
@@ -1505,7 +1505,7 @@ function getPlayerAllianceTier(nationId) {
   const player = gameState.nations[gameState.player_nation_id];
   if (!player) return 0;
   // Check alliance tier from diplomacy data
-  const allianceTiers = player.diplomacy?.alliance_tiers || {};
+  const allianceTiers = player.diplomacy?.alliance_tier || {};
   if (allianceTiers[nationId] !== undefined) return allianceTiers[nationId];
   // Fall back to binary checks
   if (player.diplomacy?.alliances?.includes(nationId)) return 3;
@@ -1633,7 +1633,7 @@ async function proposeResourceTrade(nid) {
       request_amount: reqAmt,
     });
     const accepted = result.accepted ?? true;
-    UI.notify(result.message || (accepted ? 'Trade proposed!' : 'Trade declined.'), accepted ? 'success' : 'warning', 6000);
+    UI.notify(result.response_message || result.message || (accepted ? 'Trade proposed!' : 'Trade declined.'), accepted ? 'success' : 'warning', 6000);
     if (accepted) renderActiveTrades();
   } catch (e) {
     UI.notify(`Trade error: ${e.message}`, 'error');
@@ -1648,7 +1648,7 @@ async function reqTroops(nid, warId) {
   try {
     const result = await API.requestTroops(gameId, { target_nation: nation.name, war_id: warId, troops_requested: troops });
     const accepted = result.accepted ?? true;
-    UI.notify(result.message || (accepted ? 'Troops requested!' : 'Request declined.'), accepted ? 'success' : 'warning', 6000);
+    UI.notify(result.response_message || result.message || (accepted ? 'Troops requested!' : 'Request declined.'), accepted ? 'success' : 'warning', 6000);
   } catch (e) {
     UI.notify(`Error: ${e.message}`, 'error');
   }
@@ -1663,7 +1663,7 @@ async function buyTech(nid) {
   try {
     const result = await API.buyTechnology(gameId, { target_nation: nation.name, tech_branch: branch, price_gdp: price });
     const accepted = result.accepted ?? true;
-    UI.notify(result.message || (accepted ? 'Technology purchased!' : 'Purchase declined.'), accepted ? 'success' : 'warning', 6000);
+    UI.notify(result.response_message || result.message || (accepted ? 'Technology purchased!' : 'Purchase declined.'), accepted ? 'success' : 'warning', 6000);
     if (accepted) { gameState = await API.getState(gameId); renderAll(); }
   } catch (e) {
     UI.notify(`Error: ${e.message}`, 'error');
@@ -1678,7 +1678,7 @@ async function proposeJointResearch(nid) {
   try {
     const result = await API.jointResearch(gameId, { target_nation: nation.name, tech_branch: branch });
     const accepted = result.accepted ?? true;
-    UI.notify(result.message || (accepted ? 'Joint research agreed!' : 'Proposal declined.'), accepted ? 'success' : 'warning', 6000);
+    UI.notify(result.response_message || result.message || (accepted ? 'Joint research agreed!' : 'Proposal declined.'), accepted ? 'success' : 'warning', 6000);
   } catch (e) {
     UI.notify(`Error: ${e.message}`, 'error');
   }
@@ -1690,7 +1690,7 @@ async function doUpgradeAlliance(nid, targetTier) {
   try {
     const result = await API.upgradeAlliance(gameId, { target_nation: nation.name, target_tier: targetTier });
     const accepted = result.accepted ?? true;
-    UI.notify(result.message || (accepted ? `Alliance upgraded to ${getAllianceTierName(targetTier)}!` : 'Upgrade declined.'), accepted ? 'success' : 'warning', 6000);
+    UI.notify(result.response_message || result.message || (accepted ? `Alliance upgraded to ${getAllianceTierName(targetTier)}!` : 'Upgrade declined.'), accepted ? 'success' : 'warning', 6000);
     if (accepted) { gameState = await API.getState(gameId); renderAll(); }
   } catch (e) {
     UI.notify(`Error: ${e.message}`, 'error');
