@@ -114,13 +114,16 @@ const WarMapModule = (() => {
     const player = gameState.nations[gameState.player_nation_id];
     if (!player) return;
 
+    // Front line visualizations (attacker borders pulsing red)
+    _renderFrontLines(gameState);
+
     // Occupation overlays for captured territories
     _renderOccupation(gameState);
 
     // War arrows for each active front
     fronts.forEach(front => _renderArrow(front, gameState));
 
-    // Army counters on map
+    // Army counters on map (zoom-invariant, compact HoI4-style)
     armies.forEach(army => _renderCounter(army, gameState));
   }
 
@@ -285,27 +288,34 @@ const WarMapModule = (() => {
     const c = _getCentroid(army.location || gameState.player_nation_id);
     if (!c) return;
 
+    // Get current zoom level so counters maintain fixed screen size regardless of zoom
+    const k = (svgEl && svgEl.node) ? (d3.zoomTransform(svgEl.node()).k || 1) : 1;
+
     const meta    = TEMPLATE_META[army.template_id] || TEMPLATE_META.infantry;
     const isReady = army.is_trained;
     const bgColor = isReady ? meta.color : '#3a4a5a';
-    const borderC = army.status === 'attacking' ? '#ef4444' : '#ffffff';
+    const borderC = army.status === 'attacking' ? '#ef4444' : '#c8d8ea';
 
-    // Offset multiple armies on same territory
+    // Offset multiple armies on same territory (in screen pixels, converted to SVG)
     const armiesHere = window._warMapArmyOffsets = window._warMapArmyOffsets || {};
     const key = army.location || 'home';
     armiesHere[key] = (armiesHere[key] || 0);
     const idx = armiesHere[key];
     armiesHere[key]++;
 
-    const offsetX = (idx % 4) * 26 - 26;
-    const offsetY = Math.floor(idx / 4) * 20;
-    const cx = c[0] + offsetX;
-    const cy = c[1] - 10 + offsetY;
+    // Screen-space dimensions (compact HoI4-style counter)
+    const SW = 20, SH = 13;
+    const screenOffX = (idx % 5) * 23 - 46;
+    const screenOffY = Math.floor(idx / 5) * 16;
 
-    const W = 28, H = 18;
+    // Convert screen offsets to SVG coordinate space (divide by zoom k)
+    const svgX = c[0] + screenOffX / k;
+    const svgY = c[1] - 6 / k + screenOffY / k;
+
     const g = counterLayer.append('g')
       .attr('class', 'army-counter')
-      .attr('transform', `translate(${cx - W / 2},${cy - H / 2})`)
+      // scale(1/k) keeps the counter at fixed screen size despite zoom
+      .attr('transform', `translate(${svgX},${svgY}) scale(${1 / k})`)
       .style('cursor', 'pointer')
       .on('click', () => {
         if (typeof window.onArmyCounterClick === 'function') {
@@ -313,43 +323,47 @@ const WarMapModule = (() => {
         }
       });
 
-    // Counter body
-    g.append('rect').attr('width', W).attr('height', H).attr('rx', 2)
-      .attr('fill', bgColor).attr('stroke', borderC).attr('stroke-width', 1.5);
+    // Outer shadow for depth
+    g.append('rect').attr('x', 1).attr('y', 1).attr('width', SW).attr('height', SH).attr('rx', 2)
+      .attr('fill', 'rgba(0,0,0,0.5)');
 
-    // Template icon text
+    // Counter body
+    g.append('rect').attr('width', SW).attr('height', SH).attr('rx', 2)
+      .attr('fill', bgColor).attr('stroke', borderC).attr('stroke-width', 1.2);
+
+    // Template icon text (abbreviated, fits in compact counter)
     g.append('text')
-      .attr('x', W / 2).attr('y', H / 2 + 4)
+      .attr('x', SW / 2).attr('y', SH / 2 + 3.5)
       .attr('text-anchor', 'middle')
       .attr('fill', '#fff')
-      .attr('font-size', '8px')
+      .attr('font-size', '6.5px')
       .attr('font-family', 'Rajdhani, sans-serif')
       .attr('font-weight', '700')
       .text(meta.icon);
 
-    // Division count badge
+    // Division count badge (top-right corner)
     g.append('rect')
-      .attr('x', W - 9).attr('y', -1).attr('width', 10).attr('height', 10).attr('rx', 2)
-      .attr('fill', '#1a2535').attr('stroke', borderC).attr('stroke-width', 1);
+      .attr('x', SW - 7).attr('y', -1).attr('width', 8).attr('height', 8).attr('rx', 1.5)
+      .attr('fill', '#0d1b2a').attr('stroke', borderC).attr('stroke-width', 0.8);
     g.append('text')
-      .attr('x', W - 4).attr('y', 7)
+      .attr('x', SW - 3).attr('y', 6)
       .attr('text-anchor', 'middle').attr('fill', '#ffd700')
-      .attr('font-size', '7px').attr('font-weight', '700')
+      .attr('font-size', '5.5px').attr('font-weight', '700')
       .text(army.num_divisions);
 
-    // Training indicator
+    // Training progress bar (below counter)
     if (!isReady) {
       const prog = army.training_progress / Math.max(1, army.training_turns_required);
-      g.append('rect').attr('y', H).attr('width', W).attr('height', 3)
+      g.append('rect').attr('y', SH).attr('width', SW).attr('height', 2)
         .attr('fill', '#0f1e30');
-      g.append('rect').attr('y', H).attr('width', W * prog).attr('height', 3)
+      g.append('rect').attr('y', SH).attr('width', SW * prog).attr('height', 2)
         .attr('fill', '#f59e0b');
     }
 
-    // Attack arrow when assigned
+    // Attacking pulse dot
     if (army.status === 'attacking' && army.assigned_target) {
       g.append('circle')
-        .attr('cx', W / 2).attr('cy', H + 6).attr('r', 3)
+        .attr('cx', SW / 2).attr('cy', SH + 5).attr('r', 2.5)
         .attr('fill', '#ef4444').attr('class', 'attack-pulse');
     }
 
@@ -357,6 +371,73 @@ const WarMapModule = (() => {
     g.on('mouseover', function(event) {
       _showCounterTooltip(event, army, meta, gameState);
     }).on('mouseout', _hideCounterTooltip);
+  }
+
+  // ── Front line visualization ───────────────────────────────────────────────
+
+  function _renderFrontLines(gameState) {
+    if (!warLayer) return;
+    for (const war of (gameState.active_wars || [])) {
+      if (war.status !== 'ongoing') continue;
+
+      const attacker = gameState.nations[war.attacker];
+      const defender = gameState.nations[war.defender];
+      if (!attacker || !defender) continue;
+
+      const attColor = '#ef4444';  // red for attacker
+      const defColor = '#3b82f6';  // blue for defender
+
+      // Highlight the defender's territory with an animated pulse border
+      const defIso = (COUNTRY_DATA.nameToISO || {})[defender.name.toLowerCase()];
+      if (defIso) {
+        const defPath = d3.select(`#country-${defIso}`);
+        if (!defPath.empty()) {
+          const d = defPath.datum();
+          if (d) {
+            // Pulsing attacker-colored border
+            warLayer.append('path')
+              .attr('d', pathFn(d))
+              .attr('fill', 'none')
+              .attr('stroke', attColor)
+              .attr('stroke-width', 2.5)
+              .attr('stroke-opacity', 0.7)
+              .attr('stroke-dasharray', '6 3')
+              .attr('class', 'front-line front-line-active')
+              .style('animation', 'front-pulse 1.5s ease-in-out infinite');
+
+            // Interior progress gradient overlay
+            const progressVal = war.fronts && war.fronts.length > 0
+              ? war.fronts.reduce((s, f) => s + f.progress, 0) / war.fronts.length
+              : (war.attacker_warscore + 100) / 200;
+            if (progressVal > 0.1) {
+              warLayer.append('path')
+                .attr('d', pathFn(d))
+                .attr('fill', attColor)
+                .attr('fill-opacity', Math.min(0.35, progressVal * 0.4))
+                .attr('class', 'front-progress-overlay');
+            }
+          }
+        }
+      }
+
+      // Also highlight attacker territory for context
+      const attIso = (COUNTRY_DATA.nameToISO || {})[attacker.name.toLowerCase()];
+      if (attIso) {
+        const attPath = d3.select(`#country-${attIso}`);
+        if (!attPath.empty()) {
+          const d = attPath.datum();
+          if (d) {
+            warLayer.append('path')
+              .attr('d', pathFn(d))
+              .attr('fill', 'none')
+              .attr('stroke', attColor)
+              .attr('stroke-width', 1.5)
+              .attr('stroke-opacity', 0.5)
+              .attr('class', 'front-line front-line-attacker');
+          }
+        }
+      }
+    }
   }
 
   function _showCounterTooltip(event, army, meta, gameState) {

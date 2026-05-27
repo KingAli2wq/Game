@@ -26,6 +26,7 @@ _sessions: dict[str, GameState] = {}
 _ws_connections: dict[str, list[WebSocket]] = {}
 _clock_tasks: dict[str, asyncio.Task] = {}
 _clock_locks: dict[str, asyncio.Lock] = {}
+_game_speeds: dict[str, float] = {}   # game_id -> speed multiplier (0=paused, 1=normal, 2=2x, 3=3x)
 SECONDS_PER_MONTH = 120
 
 
@@ -68,10 +69,18 @@ async def _save_state(state: GameState):
 async def _run_game_clock(game_id: str):
     lock = _clock_locks.setdefault(game_id, asyncio.Lock())
     while True:
-        await asyncio.sleep(SECONDS_PER_MONTH)
+        speed = _game_speeds.get(game_id, 1.0)
+        if speed == 0:
+            await asyncio.sleep(2)   # poll while paused
+            continue
+        sleep_time = SECONDS_PER_MONTH / max(speed, 0.1)
+        await asyncio.sleep(sleep_time)
         async with lock:
             if game_id not in _sessions:
                 return
+            # Re-check speed after sleep (may have been paused)
+            if _game_speeds.get(game_id, 1.0) == 0:
+                continue
             try:
                 state = await _get_state(game_id)
                 state, _ = await game_logic.process_full_turn(state, broadcast_fn=None)
@@ -121,7 +130,11 @@ async def new_game(request: NewGameRequest):
 
     # Grab starter issues from pool (instant fallbacks, no AI)
     from backend.models import Issue, IssueOption
-    await database.seed_pool_if_empty(ai_engine._FALLBACK_ISSUES)
+    await database.seed_pool_if_empty([
+        {**issue, "issue_type": itype}
+        for itype, issues in ai_engine._ISSUES.items()
+        for issue in issues
+    ])
     for itype in ["economic", "political"]:
         pool_issue = await database.get_pool_issue(issue_type=itype)
         if pool_issue:
@@ -195,6 +208,19 @@ async def manual_save(game_id: str):
     return {"message": "Game saved.", "turn": state.turn, "year": state.year, "month": state.month}
 
 
+@app.post("/api/game/{game_id}/speed")
+async def set_game_speed(game_id: str, body: dict):
+    """Set the real-time game speed. 0=paused, 1=normal, 2=double, 3=triple."""
+    speed = float(body.get("speed", 1.0))
+    if speed not in (0, 1, 2, 3):
+        raise HTTPException(status_code=400, detail="speed must be 0, 1, 2, or 3")
+    _game_speeds[game_id] = speed
+    # Ensure clock task is running
+    if game_id not in _clock_tasks or _clock_tasks[game_id].done():
+        _clock_tasks[game_id] = asyncio.create_task(_run_game_clock(game_id))
+    return {"speed": speed, "paused": speed == 0}
+
+
 @app.delete("/api/game/{game_id}")
 async def delete_game(game_id: str):
     _sessions.pop(game_id, None)
@@ -259,6 +285,50 @@ async def diplomatic_action(game_id: str, action: DiplomacyAction):
         raise HTTPException(status_code=404, detail="Target nation not found")
 
     target = state.nations[target_id]
+
+    # ── Sanctions are unilateral — do not require target acceptance ──────────
+    if action.action_type == "impose_sanctions":
+        already_sanctioned = target_id in player.diplomacy.sanctions_against
+        if not already_sanctioned:
+            player.diplomacy.sanctions_against.append(target_id)
+            target.economy.gdp_growth = max(-0.10, target.economy.gdp_growth - 0.012)
+            # Sanctions hurt relations both ways
+            player.diplomacy.relations[target_id] = max(-100, player.diplomacy.relations.get(target_id, 0) - 15)
+            target.diplomacy.relations[state.player_nation_id] = max(-100, target.diplomacy.relations.get(state.player_nation_id, 0) - 20)
+            state.add_news(
+                f"{player.name} imposes economic sanctions on {target.name}",
+                state.player_nation_id, "diplomacy"
+            )
+            state.nations[state.player_nation_id] = player
+            state.nations[target_id] = target
+            await _save_state(state)
+        return {
+            "accepted": True,
+            "response_message": (
+                f"Sanctions already in effect against {target.name}." if already_sanctioned
+                else f"Sanctions imposed on {target.name}. Their economy will suffer."
+            ),
+            "counteroffer": None,
+            "relation_change": -15 if not already_sanctioned else 0,
+            "rejection_reason": None,
+        }
+
+    if action.action_type == "lift_sanctions":
+        if target_id in player.diplomacy.sanctions_against:
+            player.diplomacy.sanctions_against.remove(target_id)
+            target.economy.gdp_growth = min(0.10, target.economy.gdp_growth + 0.012)
+            state.nations[state.player_nation_id] = player
+            state.nations[target_id] = target
+            await _save_state(state)
+        return {
+            "accepted": True,
+            "response_message": f"Sanctions against {target.name} lifted.",
+            "counteroffer": None,
+            "relation_change": 5,
+            "rejection_reason": None,
+        }
+
+    # ── Other actions require diplomatic negotiation ─────────────────────────
     response = await ai_engine.generate_diplomatic_response(
         target.model_dump(), player.model_dump(), action.action_type, action.details
     )
@@ -282,21 +352,26 @@ async def diplomatic_action(game_id: str, action: DiplomacyAction):
                 player.diplomacy.trade_deals.append(target_id)
                 target.diplomacy.trade_deals.append(state.player_nation_id)
                 player.economy.gdp_growth = min(0.15, player.economy.gdp_growth + 0.005)
+                state.add_news(f"{player.name} and {target.name} sign a trade deal", state.player_nation_id, "diplomacy")
 
         elif action.action_type == "defense_pact":
             if target_id not in player.diplomacy.defense_pacts:
                 player.diplomacy.defense_pacts.append(target_id)
                 target.diplomacy.defense_pacts.append(state.player_nation_id)
+                state.add_news(f"{player.name} and {target.name} sign a defense pact", state.player_nation_id, "diplomacy")
 
-        elif action.action_type == "impose_sanctions":
-            if target_id not in player.diplomacy.sanctions_against:
-                player.diplomacy.sanctions_against.append(target_id)
-                target.economy.gdp_growth -= 0.01
-                state.add_news(f"{player.name} imposes sanctions on {target.name}", state.player_nation_id, "diplomacy")
-
-        elif action.action_type == "lift_sanctions":
-            if target_id in player.diplomacy.sanctions_against:
-                player.diplomacy.sanctions_against.remove(target_id)
+    # Rejection reason for player feedback
+    rejection_reason = None
+    if not accepted:
+        rel = player.diplomacy.relations.get(target_id, 0)
+        if rel < -30:
+            rejection_reason = "hostile_relations"
+        elif action.action_type == "form_alliance":
+            rejection_reason = "insufficient_trust"
+        elif action.action_type == "trade_deal":
+            rejection_reason = "unfavorable_terms"
+        else:
+            rejection_reason = "political_disagreement"
 
     state.nations[state.player_nation_id] = player
     state.nations[target_id] = target
@@ -306,7 +381,8 @@ async def diplomatic_action(game_id: str, action: DiplomacyAction):
         "accepted": accepted,
         "response_message": response.get("response_message", ""),
         "counteroffer": response.get("counteroffer"),
-        "relation_change": relation_change
+        "relation_change": relation_change,
+        "rejection_reason": rejection_reason,
     }
 
 
@@ -1476,6 +1552,66 @@ async def sandbox_action(game_id: str, body: dict):
     await _save_state(state)
     await _broadcast(game_id, {"type": "state_update", "state": state.model_dump()})
     return {"messages": messages, "action": action}
+
+
+# ── Espionage ──────────────────────────────────────────────────────────────
+
+_SPY_MISSIONS: dict[str, dict] = {
+    "steal_blueprints": {"cost": 40, "effect": "research", "value": 25},
+    "sabotage_industry": {"cost": 60, "effect": "industry", "value": -0.15},
+    "assassinate_leader": {"cost": 80, "effect": "stability", "value": -0.20},
+    "propaganda_campaign": {"cost": 30, "effect": "war_support", "value": -0.10},
+    "counter_intel": {"cost": 20, "effect": "defense", "value": 0.25},
+}
+
+
+@app.post("/api/game/{game_id}/espionage/launch")
+async def launch_spy_mission(game_id: str, body: dict):
+    state = await _get_state(game_id)
+    player = state.get_player_nation()
+    if not player:
+        raise HTTPException(status_code=400, detail="No player nation")
+
+    mission_id = body.get("mission_id", "")
+    target_name = body.get("target_nation", "")
+    mission = _SPY_MISSIONS.get(mission_id)
+    if not mission:
+        raise HTTPException(status_code=400, detail=f"Unknown mission: {mission_id}")
+
+    cost = mission["cost"]
+    if player.espionage_points < cost:
+        raise HTTPException(status_code=400, detail=f"Not enough intel points ({player.espionage_points:.0f}/{cost})")
+
+    # Find target nation
+    target = next((n for n in state.nations.values() if n.name.lower() == target_name.lower()), None)
+
+    player.espionage_points -= cost
+    effect = mission["effect"]
+    value = mission["value"]
+    msg = ""
+
+    if effect == "research":
+        player.research_points = min(100, player.research_points + value)
+        msg = f"Blueprints stolen — +{value} Research Points"
+    elif effect == "industry" and target:
+        target.economy.gdp_growth = max(-0.15, target.economy.gdp_growth + value)
+        msg = f"Sabotage successful — {target.name} industry disrupted"
+    elif effect == "stability" and target:
+        target.stability = max(0.0, target.stability + value)
+        msg = f"Assassination attempt — {target.name} stability reduced"
+    elif effect == "war_support" and target:
+        target.war_support = max(0.0, target.war_support + value)
+        msg = f"Propaganda spread — {target.name} war support reduced"
+    elif effect == "defense":
+        msg = "Counter-intelligence hardened — your agencies are more secure"
+    else:
+        msg = f"Operation completed" + (f" against {target_name}" if target_name else "")
+
+    state.nations[state.player_nation_id] = player
+    if target:
+        state.nations[target.id] = target
+    await _save_state(state)
+    return {"message": msg, "espionage_points": player.espionage_points}
 
 
 # ── WebSocket ──────────────────────────────────────────────────────────────

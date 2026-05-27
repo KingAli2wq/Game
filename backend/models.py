@@ -132,6 +132,11 @@ class Nation(BaseModel):
     is_at_war: bool = False
     is_alive: bool = True
     color: str = "#888888"
+    # Rebellion — grows when stability is critically low
+    rebel_strength: float = 0.0
+    has_rebellion: bool = False
+    # Espionage points (accumulate over turns, spent on missions)
+    espionage_points: float = 0.0
     economy: EconomyStats = Field(default_factory=EconomyStats)
     military: MilitaryStats = Field(default_factory=MilitaryStats)
     diplomacy: DiplomacyState = Field(default_factory=DiplomacyState)
@@ -217,6 +222,10 @@ class GameState(BaseModel):
     resource_trades: list[ResourceTradeOffer] = Field(default_factory=list)
     # HOI4-style player army groups
     player_armies: list[ArmyDivision] = Field(default_factory=list)
+    # Issue frequency — counts down turns; issue generated when reaches 0
+    turns_until_next_issue: int = 0
+    # Espionage missions in progress (list of mission dicts)
+    active_spy_missions: list[dict] = Field(default_factory=list)
 
     def get_player_nation(self) -> Optional[Nation]:
         return self.nations.get(self.player_nation_id)

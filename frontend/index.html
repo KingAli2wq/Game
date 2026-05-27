@@ -6,23 +6,31 @@
   <title>Grand Strategy AI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Rajdhani:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Rajdhani:wght@400;500;600;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
 
 <!-- ████ MAIN MENU ████ -->
 <div id="menu-screen" class="screen active">
-  <div class="menu-logo"><i data-lucide="globe" class="menu-logo-icon"></i></div>
-  <div class="menu-title">GRAND STRATEGY</div>
-  <div class="menu-subtitle">Powered by AI · Every World Unique</div>
-  <div id="ai-status" style="font-size:12px; color:var(--text-dim)">● Connecting...</div>
-  <div class="menu-buttons">
-    <button id="btn-new-game" class="btn btn-primary btn-lg btn-full">New Campaign</button>
-    <button id="btn-load-game" class="btn btn-secondary btn-lg btn-full">Load Game</button>
-  </div>
-  <div style="font-size:11px; color:var(--text-dim); margin-top:16px">
-    Hearts of Iron × NationStates · AI-driven geopolitics
+  <div class="menu-bg-overlay"></div>
+  <div class="menu-content">
+    <div class="menu-emblem">
+      <svg viewBox="0 0 120 120" width="90" height="90" class="menu-emblem-svg">
+        <circle cx="60" cy="60" r="56" fill="none" stroke="#c9a84c" stroke-width="1.5" opacity="0.6"/>
+        <circle cx="60" cy="60" r="44" fill="none" stroke="#c9a84c" stroke-width="0.8" opacity="0.3"/>
+        <polygon points="60,12 68,38 96,38 74,54 82,80 60,65 38,80 46,54 24,38 52,38" fill="none" stroke="#c9a84c" stroke-width="1.2" opacity="0.5"/>
+        <circle cx="60" cy="60" r="8" fill="#c9a84c" opacity="0.9"/>
+      </svg>
+    </div>
+    <div class="menu-title">GRAND STRATEGY</div>
+    <div class="menu-subtitle">Powered by AI · Every World Unique</div>
+    <div id="ai-status" class="menu-ai-status">● Connecting to AI...</div>
+    <div class="menu-buttons">
+      <button id="btn-new-game" class="btn btn-primary btn-lg btn-full menu-btn">New Campaign</button>
+      <button id="btn-load-game" class="btn btn-secondary btn-lg btn-full menu-btn">Load Game</button>
+    </div>
+    <div class="menu-tagline">Hearts of Iron × NationStates · AI-driven geopolitics</div>
   </div>
 </div>
 
@@ -30,17 +38,18 @@
 <div id="setup-screen" class="screen">
   <div class="setup-container">
     <div class="setup-title">NEW CAMPAIGN</div>
+    <div class="setup-divider"></div>
 
     <div class="form-group">
       <label class="form-label">Historical Era</label>
       <select id="era-select" class="form-select"><option value="">Loading...</option></select>
-      <div id="era-description" class="small text-dim mt-1" style="font-style:italic"></div>
+      <div id="era-description" class="era-desc"></div>
     </div>
 
     <div class="form-group">
       <label class="form-label">Your Nation</label>
       <select id="nation-input" class="form-select"></select>
-      <input id="nation-custom" class="form-input mt-1" type="text" placeholder="Or type any nation name (e.g. Byzantine Empire, Mars Colony...)" />
+      <input id="nation-custom" class="form-input mt-1" type="text" placeholder="Or type any nation (e.g. Byzantine Empire, Mars Colony...)" />
     </div>
 
     <div class="form-group">
@@ -60,7 +69,7 @@
     </div>
 
     <div class="flex gap-2">
-      <button id="btn-back-menu" class="btn btn-secondary btn-full">Back</button>
+      <button id="btn-back-menu" class="btn btn-secondary btn-full">← Back</button>
       <button id="btn-start-game" class="btn btn-primary btn-full">Begin Campaign →</button>
     </div>
   </div>
@@ -83,10 +92,8 @@
         <circle cx="60" cy="6" r="3" fill="#1d4ed8" class="wg-dot-orbit"/>
       </svg>
     </div>
-
     <div class="wg-title">GENERATING WORLD</div>
     <div class="wg-era" id="wg-era-label">Initialising...</div>
-
     <div class="wg-steps" id="wg-steps">
       <div class="wg-step" id="wgs-0"><span class="wg-step-icon">○</span> Consulting historical records</div>
       <div class="wg-step" id="wgs-1"><span class="wg-step-icon">○</span> Placing nations on the map</div>
@@ -95,7 +102,6 @@
       <div class="wg-step" id="wgs-4"><span class="wg-step-icon">○</span> Establishing diplomacy</div>
       <div class="wg-step" id="wgs-5"><span class="wg-step-icon">○</span> Generating opening issues</div>
     </div>
-
     <div class="wg-timer" id="wg-timer">0s elapsed</div>
     <button class="btn btn-secondary btn-sm wg-cancel" onclick="cancelNewGame()">Cancel</button>
   </div>
@@ -107,49 +113,75 @@
 
     <!-- TOP BAR -->
     <div id="topbar">
-      <span id="tb-flag" style="font-size:22px">🏳️</span>
-      <span id="tb-nation-name" class="topbar-nation">—</span>
-
-      <div class="topbar-stat">
-        <span class="topbar-stat-label">GDP</span>
-        <span id="tb-gdp" class="topbar-stat-value text-green">—</span>
-      </div>
-      <div class="topbar-stat">
-        <span class="topbar-stat-label">Stability</span>
-        <span id="tb-stability" class="topbar-stat-value">—</span>
-      </div>
-      <div class="topbar-stat">
-        <span class="topbar-stat-label">Prestige</span>
-        <span id="tb-prestige" class="topbar-stat-value text-gold">—</span>
-      </div>
-      <div class="topbar-stat">
-        <span class="topbar-stat-label">Army</span>
-        <span id="tb-army" class="topbar-stat-value">—</span>
-      </div>
-
-      <div style="flex:1"></div>
-      <span id="tb-date" class="topbar-date text-gold bold">—</span>
-      <div style="flex:1"></div>
-
-      <div class="tension-bar">
-        <span class="tension-label">World Tension</span>
-        <div class="tension-track">
-          <div id="tension-fill" class="tension-fill" style="width:30%"></div>
+      <div class="topbar-nation-block">
+        <div id="tb-flag" class="tb-flag-wrap"></div>
+        <div class="topbar-nation-info">
+          <span id="tb-nation-name" class="topbar-nation">—</span>
+          <span id="tb-ideology-tag" class="topbar-ideology-tag">—</span>
         </div>
-        <span id="tension-val" class="small bold">30%</span>
       </div>
 
-      <button class="btn btn-secondary btn-sm" id="btn-save-game" onclick="manualSave()" title="Save game">💾 Save</button>
-      <button class="btn btn-secondary btn-sm" onclick="location.reload()">Menu</button>
+      <div class="topbar-divider-v"></div>
+
+      <div class="topbar-stats-group">
+        <div class="topbar-stat" title="Gross Domestic Product">
+          <span class="topbar-stat-label">GDP</span>
+          <span id="tb-gdp" class="topbar-stat-value text-green">—</span>
+        </div>
+        <div class="topbar-stat" title="National stability (0–100%). Low stability causes crises.">
+          <span class="topbar-stat-label">Stability</span>
+          <span id="tb-stability" class="topbar-stat-value">—</span>
+          <div class="topbar-mini-bar"><div id="tb-stability-bar" class="topbar-mini-fill fill-stability"></div></div>
+        </div>
+        <div class="topbar-stat" title="War Support — required to sustain wars. 0% forces peace.">
+          <span class="topbar-stat-label">War Support</span>
+          <span id="tb-war-support" class="topbar-stat-value">—</span>
+          <div class="topbar-mini-bar"><div id="tb-warsupport-bar" class="topbar-mini-fill fill-war"></div></div>
+        </div>
+        <div class="topbar-stat" title="International prestige and global standing.">
+          <span class="topbar-stat-label">Prestige</span>
+          <span id="tb-prestige" class="topbar-stat-value text-gold">—</span>
+        </div>
+        <div class="topbar-stat" title="Total military manpower mobilized.">
+          <span class="topbar-stat-label">Army</span>
+          <span id="tb-army" class="topbar-stat-value">—</span>
+        </div>
+      </div>
+
+      <div class="topbar-center">
+        <span id="tb-date" class="topbar-date">—</span>
+        <div class="tension-bar" title="World Tension — high tension leads to wars and crises.">
+          <span class="tension-label">World Tension</span>
+          <div class="tension-track">
+            <div id="tension-fill" class="tension-fill" style="width:30%"></div>
+          </div>
+          <span id="tension-val" class="tension-val">30%</span>
+        </div>
+      </div>
+
+      <div class="topbar-actions">
+        <button class="btn btn-secondary btn-sm topbar-btn" id="btn-save-game" onclick="manualSave()" title="Save game">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Save
+        </button>
+        <button class="btn btn-secondary btn-sm topbar-btn" onclick="location.reload()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          Menu
+        </button>
+      </div>
     </div>
 
-    <!-- LEFT PANEL: Nation + Issues -->
+    <!-- LEFT PANEL -->
     <div id="left-panel">
       <div id="left-tabs" class="tab-bar">
         <button class="tab-btn active" data-tab="nation-tab">Nation</button>
-        <button class="tab-btn" data-tab="issues-tab">Issues</button>
+        <button class="tab-btn" data-tab="issues-tab">
+          Issues
+          <span id="issues-badge" class="tab-badge hidden">0</span>
+        </button>
         <button class="tab-btn" data-tab="policies-tab">Policies</button>
         <button class="tab-btn" data-tab="military-tab">Military</button>
+        <button class="tab-btn" data-tab="intel-tab">Intel</button>
       </div>
 
       <div id="nation-tab" class="tab-content active">
@@ -162,7 +194,7 @@
         <div class="panel-section">
           <div class="panel-header">
             <span class="panel-title">Pending Issues</span>
-            <span class="small text-dim" style="font-size:10px">Resolve issues to shape your nation</span>
+            <span class="small text-dim" style="font-size:10px">Resolve to shape your nation</span>
           </div>
           <div id="issues-content"></div>
         </div>
@@ -170,9 +202,7 @@
 
       <div id="policies-tab" class="tab-content">
         <div class="panel-section">
-          <div class="panel-header">
-            <span class="panel-title">Government Policies</span>
-          </div>
+          <div class="panel-header"><span class="panel-title">Government Policies</span></div>
           <div id="policies-slots-bar"></div>
           <div id="policies-content"><p class="text-dim small p-2">Loading...</p></div>
         </div>
@@ -184,6 +214,29 @@
           <div id="military-content"><p class="text-dim small p-2">Loading...</p></div>
         </div>
       </div>
+
+      <div id="intel-tab" class="tab-content">
+        <div class="panel-section">
+          <div class="panel-header">
+            <span class="panel-title">Intelligence Agency</span>
+          </div>
+          <div id="intel-content">
+            <div class="intel-points-bar">
+              <span class="small text-dim">Intel Points</span>
+              <div class="stat-bar" style="margin-top:4px">
+                <div id="intel-points-fill" class="stat-fill fill-gold" style="width:0%"></div>
+              </div>
+              <span id="intel-points-val" class="small text-gold bold">0 / 200</span>
+            </div>
+            <div class="intel-missions-title small text-dim" style="margin:10px 0 6px">AVAILABLE MISSIONS</div>
+            <div id="intel-missions-list"></div>
+          </div>
+        </div>
+        <div class="panel-section">
+          <div class="panel-header"><span class="panel-title">Active Operations</span></div>
+          <div id="intel-active-ops"><p class="text-dim small p-2">No active operations.</p></div>
+        </div>
+      </div>
     </div>
 
     <!-- MAP CENTER -->
@@ -192,7 +245,7 @@
       <div id="ideology-legend"></div>
     </div>
 
-    <!-- RIGHT PANEL: Diplomacy + Economy + News -->
+    <!-- RIGHT PANEL -->
     <div id="right-panel">
       <div id="right-tabs" class="tab-bar">
         <button class="tab-btn active" data-tab="diplomacy-tab">Nations</button>
@@ -208,20 +261,15 @@
       </div>
 
       <div id="economy-tab" class="tab-content">
-        <!-- Economy Overview -->
         <div class="panel-section">
           <div class="panel-header"><span class="panel-title">Economy Overview</span></div>
           <div id="eco-overview-content"><p class="text-dim small p-2">Loading...</p></div>
         </div>
-
-        <!-- Stockpile & Factories -->
         <div class="panel-section">
-          <div class="panel-header"><span class="panel-title">Industry & Stockpile</span></div>
+          <div class="panel-header"><span class="panel-title">Industry &amp; Stockpile</span></div>
           <div id="eco-stockpile-content"><p class="text-dim small p-2">Loading...</p></div>
           <div id="eco-factories-content"></div>
         </div>
-
-        <!-- Active Resource Trades -->
         <div class="panel-section">
           <div class="panel-header">
             <span class="panel-title">Resource Trades</span>
@@ -241,36 +289,49 @@
 
     <!-- NEWS TICKER -->
     <div id="ticker-bar">
-      <span class="ticker-label"><i data-lucide="newspaper" style="width:11px;height:11px;vertical-align:middle"></i> NEWS</span>
+      <span class="ticker-label">NEWS</span>
       <div class="ticker-track">
         <div id="ticker-inner" class="ticker-inner">Waiting for world events...</div>
       </div>
     </div>
 
-    <!-- BOTTOM BAR -->
+    <!-- BOTTOM BAR (Speed Controls + Actions) -->
     <div id="bottombar">
-      <div class="bottombar-section">
-        <span class="small text-dim">Turn</span>
-        <span id="bb-turn" class="bold text-gold">0</span>
+      <!-- Speed controls (replaces turn button) -->
+      <div class="speed-controls" id="speed-controls">
+        <span class="speed-label">SPEED</span>
+        <button class="speed-btn active" id="speed-btn-pause" onclick="setSpeed(0)" title="Pause">⏸</button>
+        <button class="speed-btn" id="speed-btn-1x" onclick="setSpeed(1)" title="Normal speed">1x</button>
+        <button class="speed-btn" id="speed-btn-2x" onclick="setSpeed(2)" title="Double speed">2x</button>
+        <button class="speed-btn" id="speed-btn-3x" onclick="setSpeed(3)" title="Triple speed">3x</button>
+        <div id="speed-clock-indicator" class="speed-clock-indicator" title="Time until next turn">
+          <div id="speed-clock-fill" class="speed-clock-fill"></div>
+        </div>
       </div>
+
       <div class="bottombar-divider"></div>
-      <div class="bottombar-section">
-        <span class="small text-dim">Phase</span>
-        <span id="bb-phase" class="bold">issues</span>
+
+      <div class="bottombar-section small text-dim" style="font-size:10px">
+        <span id="bb-turn-info">Turn <strong id="bb-turn" class="text-gold">0</strong></span>
+        &nbsp;·&nbsp;
+        <span id="bb-phase" class="text-dim">Real-time</span>
       </div>
+
       <div class="bottombar-divider"></div>
-      <div class="bottombar-section small text-dim">
-        Click nations on map or in Nations panel for diplomacy & war
+
+      <div class="bottombar-section small text-dim" style="font-size:10px">
+        Click map or Nations panel for diplomacy &amp; war
       </div>
+
       <div style="flex:1"></div>
-      <button id="btn-sandbox" class="btn btn-secondary" onclick="openSandbox()" style="margin-right:4px" title="Sandbox / Cheat Panel">
-        🧪 Sandbox
+
+      <button id="btn-sandbox" class="btn btn-secondary bottombar-action-btn" onclick="openSandbox()" title="Sandbox / Cheat Panel">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18"/></svg>
+        Sandbox
       </button>
-      <button id="btn-research" class="btn btn-secondary" onclick="window.__debugBanner && window.__debugBanner('Research click'); openTechTree && openTechTree()" style="margin-right:4px">
-        ⚗️ Research
-      </button>
-      <button id="btn-end-turn" class="btn btn-primary" onclick="endTurn()">
-        Real-time
+      <button id="btn-research" class="btn btn-secondary bottombar-action-btn" onclick="openTechTree && openTechTree()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        Research
       </button>
     </div>
 
@@ -296,7 +357,7 @@
 <div id="nation-modal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-header">
-      <span id="modal-nation-flag" style="font-size:24px">🏳️</span>
+      <span id="modal-nation-flag" class="modal-flag-wrap"></span>
       <span id="modal-nation-title" class="modal-title">Nation</span>
       <button class="modal-close" data-close-modal="nation-modal">×</button>
     </div>
@@ -309,7 +370,8 @@
 <div id="war-modal" class="modal-overlay hidden">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
-      <span class="modal-title"><i data-lucide="swords" style="width:15px;height:15px;vertical-align:middle;margin-right:6px"></i>Declare War</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="margin-right:8px"><path d="M14.5 17.5L3 6m0 0l4 4m-4-4l4-4M9.5 6.5L21 18m0 0l-4-4m4 4l-4 4"/></svg>
+      <span class="modal-title">Declare War</span>
       <button class="modal-close" data-close-modal="war-modal">×</button>
     </div>
     <div class="modal-body">
@@ -340,7 +402,7 @@
   <div class="modal" style="max-width:520px">
     <div class="modal-header">
       <div class="loading-spinner" id="turn-log-spinner"></div>
-      <span id="turn-log-title" class="modal-title">Processing Turn...</span>
+      <span id="turn-log-title" class="modal-title">Processing...</span>
     </div>
     <div class="modal-body">
       <div id="turn-log-content" class="turn-log-content"></div>
@@ -376,7 +438,7 @@
 <div id="create-army-modal" class="modal-overlay hidden">
   <div class="modal" style="max-width:560px">
     <div class="modal-header">
-      <span class="modal-title">⚔ Recruit Army Group</span>
+      <span class="modal-title">Recruit Army Group</span>
       <button class="modal-close" data-close-modal="create-army-modal">×</button>
     </div>
     <div class="modal-body">
@@ -405,12 +467,12 @@
 <div id="assign-army-modal" class="modal-overlay hidden">
   <div class="modal" style="max-width:440px">
     <div class="modal-header">
-      <span class="modal-title">⚔ Assign Attack Order</span>
+      <span class="modal-title">Assign Attack Order</span>
       <button class="modal-close" data-close-modal="assign-army-modal">×</button>
     </div>
     <div class="modal-body" style="max-height:70vh;overflow-y:auto">
       <p class="text-dim small mb-2">
-        Assign <strong id="aam-army-name">Army</strong> to a front. Join an existing front or open a new axis of advance.
+        Assign <strong id="aam-army-name">Army</strong> to a front. Join existing or open new axis of advance.
       </p>
       <input type="hidden" id="aam-army-id">
       <div id="aam-targets" class="aam-target-list"></div>
@@ -442,11 +504,12 @@
 <div id="peace-modal" class="modal-overlay hidden">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title"><i data-lucide="scroll-text" style="width:15px;height:15px;vertical-align:middle;margin-right:6px"></i>Peace Negotiations</span>
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      <span class="modal-title">Peace Conference</span>
       <button class="modal-close" data-close-modal="peace-modal">×</button>
     </div>
     <div class="modal-body">
-      <p class="text-dim small mb-2">Choose the terms of peace. Higher warscore allows more punishing terms.</p>
+      <p class="text-dim small mb-2">The war has concluded. Present your peace demands.</p>
       <div id="peace-terms-list"></div>
     </div>
   </div>
@@ -468,7 +531,7 @@
         <button class="sandbox-btn" onclick="sb('add_equipment')">+5k Equipment</button>
         <button class="sandbox-btn" onclick="sb('add_political_power')">+300 Pol. Power</button>
         <button class="sandbox-btn" onclick="sb('boost_economy')">Boost Economy</button>
-        <button class="sandbox-btn" onclick="sb('add_stability')">+Stability & War Support</button>
+        <button class="sandbox-btn" onclick="sb('add_stability')">+Stability &amp; War Support</button>
       </div>
 
       <div class="sandbox-section-title" style="margin-top:12px">ARMIES</div>
@@ -489,6 +552,23 @@
     </div>
     <div class="modal-actions">
       <button class="btn btn-secondary btn-sm" data-close-modal="sandbox-modal">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rebellion Alert Modal -->
+<div id="rebellion-modal" class="modal-overlay hidden">
+  <div class="modal" style="max-width:460px; border-color:#ef4444">
+    <div class="modal-header" style="background:rgba(239,68,68,0.12); border-bottom-color:#ef4444">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" style="margin-right:8px"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="modal-title" style="color:#ef4444">REBELLION ALERT</span>
+      <button class="modal-close" data-close-modal="rebellion-modal">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="rebellion-modal-content"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger btn-sm" onclick="closeModal('rebellion-modal')">Acknowledged</button>
     </div>
   </div>
 </div>
@@ -517,13 +597,6 @@
   };
 </script>
 
-<script>
-  // Initialize Lucide icons after DOM is ready
-  document.addEventListener('DOMContentLoaded', () => {
-    if (window.lucide) lucide.createIcons();
-  });
-</script>
-
 <!-- Libraries -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
@@ -537,6 +610,12 @@
 <script src="/static/js/war-map.js"></script>
 <script src="/static/js/tech-tree.js"></script>
 <script src="/static/js/main.js"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (window.lucide) lucide.createIcons();
+  });
+</script>
 
 </body>
 </html>
